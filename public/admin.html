@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模卡后台管理</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="admin-shell">
+    <section id="loginPanel" class="panel narrow">
+      <h1>后台登录</h1>
+      <form id="loginForm" class="stack">
+        <label><span>登录名</span><input name="loginName" required></label>
+        <label><span>密码</span><input name="password" type="password" required></label>
+        <button type="submit">登录</button>
+        <span id="loginStatus" class="status"></span>
+      </form>
+    </section>
+
+    <section id="adminPanel" class="hidden">
+      <div class="topbar">
+        <div>
+          <h1>模卡后台管理</h1>
+          <p class="muted">维护项目、职别和报名清单。当前用户：<span id="currentAdminName">-</span></p>
+        </div>
+        <div class="row-actions">
+          <a class="ghost-link" href="/">前端录入</a>
+          <button id="openPasswordDialogBtn" class="secondary" type="button">修改密码</button>
+          <button id="openUserDialogBtn" class="secondary hidden" type="button">账号管理</button>
+          <button id="logoutBtn" class="secondary">退出</button>
+        </div>
+      </div>
+
+      <div class="admin-grid">
+        <section class="panel">
+          <h2>项目维护</h2>
+          <form id="projectForm" class="stack">
+            <input type="hidden" name="id">
+            <label><span>项目名称</span><input name="name" required></label>
+            <div class="two-col">
+              <label><span>开始日期</span><input name="startDate" type="date"></label>
+              <label><span>结束日期</span><input name="endDate" type="date"></label>
+            </div>
+            <label><span>项目介绍</span><textarea name="intro" rows="5"></textarea></label>
+            <div class="actions">
+              <button type="submit">保存项目</button>
+              <button type="button" id="resetProjectBtn" class="secondary">清空</button>
+              <button type="button" id="cleanupExpiredProjectsBtn" class="secondary">清理过期项目</button>
+            </div>
+          </form>
+          <div id="projectList" class="list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>职别维护</h2>
+          <form id="roleForm" class="stack">
+            <label><span>所属项目</span><select name="projectId" id="roleProjectSelect" required></select></label>
+            <label><span>职别名称</span><input name="name" placeholder="模特、礼仪等" required></label>
+            <button type="submit">增加职别</button>
+          </form>
+          <div id="roleList" class="list"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>项目职别总览</h2>
+          <span id="projectRoleSummaryCount" class="status"></span>
+        </div>
+        <div class="table-wrap compact-table">
+          <table>
+            <thead>
+              <tr>
+                <th>项目名称</th>
+                <th>项目日期</th>
+                <th>职别</th>
+                <th>报名人数</th>
+              </tr>
+            </thead>
+            <tbody id="projectRoleSummaryRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>报名清单</h2>
+          <button id="exportBtn" class="secondary">导出 Excel</button>
+        </div>
+        <div class="filters">
+          <label><span>项目名称</span><select id="filterProject"></select></label>
+          <label>
+            <span>职别</span>
+            <div class="multi-select" id="filterRoleSelect">
+              <button type="button" class="multi-select-toggle" id="filterRoleToggle" aria-expanded="false">全部职别</button>
+              <div class="multi-select-menu hidden" id="filterRoleMenu"></div>
+            </div>
+          </label>
+          <button id="searchBtn">检索</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>项目名称</th>
+                <th>姓名</th>
+                <th>职别</th>
+                <th>联系电话</th>
+                <th>微信号</th>
+                <th>PPTX 文件 Url 下载位置</th>
+              </tr>
+            </thead>
+            <tbody id="submissionRows"></tbody>
+          </table>
+        </div>
+        <div class="actions table-actions">
+          <button id="mergePptxBtn" class="secondary" type="button">合并 PPTX</button>
+          <button id="downloadMergedPptxBtn" type="button" disabled>下载合并 PPTX</button>
+        </div>
+      </section>
+    </section>
+
+    <dialog id="passwordDialog" class="success-dialog admin-dialog">
+      <div class="success-dialog-body">
+        <div class="section-head compact-head">
+          <h2>修改密码</h2>
+          <button type="button" class="secondary dialog-close" data-close-dialog="passwordDialog">关闭</button>
+        </div>
+        <form id="passwordForm" class="stack">
+          <label><span>新密码</span><input name="password" type="password" minlength="8" required></label>
+          <div class="actions">
+            <button type="submit">保存密码</button>
+            <span id="passwordStatus" class="status"></span>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="userDialog" class="success-dialog admin-dialog wide-dialog">
+      <div class="success-dialog-body">
+        <div class="section-head compact-head">
+          <h2>账号管理</h2>
+          <button type="button" class="secondary dialog-close" data-close-dialog="userDialog">关闭</button>
+        </div>
+        <form id="userForm" class="stack">
+          <label><span>登录名</span><input name="loginName" required></label>
+          <label><span>用户名</span><input name="username" placeholder="真实姓名或显示名称" required></label>
+          <label><span>初始密码</span><input name="password" type="password" minlength="8" required></label>
+          <button type="submit">新增用户</button>
+        </form>
+        <div id="userList" class="list dialog-list"></div>
+      </div>
+    </dialog>
+  </main>
+  <script src="/admin.js?v=login-name-display-name-20260608"></script>
+</body>
+</html>

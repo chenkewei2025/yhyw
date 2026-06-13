@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模卡报名</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="panel">
+      <div class="topbar">
+        <div>
+          <h1>模卡报名</h1>
+          <p class="muted">提交素材生成 PPTX 模卡并完成项目报名。姓名作为识别您身份的标签一定要写。素材图片视频都需要竖版，以适配pptx页面，如果是横版请自行调整。点击提交按钮即已完成项目报名操作。</p>
+        </div>
+      </div>
+
+      <form id="entryForm" class="form-grid">
+        <label>
+          <span>报名项目</span>
+          <select name="projectId" id="projectSelect" required></select>
+        </label>
+
+        <label>
+          <span>报名职别</span>
+          <select name="roleId" id="roleSelect" required></select>
+        </label>
+
+        <div class="project-intro">
+          <span>项目介绍</span>
+          <div id="projectIntro" class="intro-box">请选择报名项目</div>
+        </div>
+
+        <label class="wide">
+          <span>自我介绍文本</span>
+          <textarea name="introText" id="introText" rows="12" required placeholder="不要把联系电话、微信号写在这里。资料内容需按下面提示内容填写完整，可在线编辑或粘贴完整文本内容到这里：
+姓名：
+身高：
+体重：
+三围：
+服装尺码：
+鞋码：
+语言能力：
+工作经验："></textarea>
+        </label>
+
+        <label>
+          <span>联系电话</span>
+          <input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="[0-9]{11}" required>
+        </label>
+
+        <label>
+          <span>微信号</span>
+          <input name="wechat">
+        </label>
+
+        <label>
+          <span>最佳照片</span>
+          <input type="file" name="bestPhoto" accept=".jpg,.jpeg,.bmp,.gif,.png,image/jpeg,image/pjpeg,image/bmp,image/x-ms-bmp,image/gif,image/png,image/x-png" required>
+          <small>限制 6M</small>
+        </label>
+
+        <label>
+          <span>最佳视频</span>
+          <input type="file" name="bestVideo" accept="video/*" required>
+          <small>限制 30M</small>
+        </label>
+
+        <label>
+          <span>剩余照片</span>
+          <div class="file-picker">
+            <input type="file" id="otherPhotosInput" accept=".jpg,.jpeg,.bmp,.gif,.png,image/jpeg,image/pjpeg,image/bmp,image/x-ms-bmp,image/gif,image/png,image/x-png" multiple>
+            <button type="button" class="secondary" id="chooseOtherPhotoBtn">选择照片</button>
+            <button type="button" class="secondary" id="clearOtherPhotosBtn">重新选择</button>
+          </div>
+          <div id="otherPhotosNames" class="file-names">未选择照片</div>
+          <small>最多 2 张，每张限制 6M</small>
+        </label>
+
+        <label>
+          <span>剩余视频</span>
+          <input type="file" name="otherVideos" accept="video/*">
+          <small>最多 1 个，限制 30M</small>
+        </label>
+
+        <div class="actions wide">
+          <button type="submit" id="submitBtn">提交</button>
+          <button type="button" id="downloadBtn" disabled>下载</button>
+          <span id="status" class="status"></span>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="successDialog" class="success-dialog">
+    <div class="success-dialog-body">
+      <h2>报名成功</h2>
+      <p class="muted">PPTX 文件已生成，请确认报名信息。</p>
+      <dl class="success-details">
+        <div>
+          <dt>项目名称</dt>
+          <dd id="successProjectName"></dd>
+        </div>
+        <div>
+          <dt>项目开始时间</dt>
+          <dd id="successStartDate"></dd>
+        </div>
+        <div>
+          <dt>项目结束时间</dt>
+          <dd id="successEndDate"></dd>
+        </div>
+        <div>
+          <dt>姓名</dt>
+          <dd id="successPersonName"></dd>
+        </div>
+        <div>
+          <dt>职别</dt>
+          <dd id="successRoleName"></dd>
+        </div>
+      </dl>
+      <div class="dialog-actions">
+        <button type="button" id="successDialogClose">确认</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/entry.js?v=submit-lock-20260610"></script>
+</body>
+</html>

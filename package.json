@@ -1,0 +1,26 @@
+{
+  "name": "model-card-portal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node index.js",
+    "start": "node index.js",
+    "deploy": "scripts/deploy-nodejs.sh",
+    "build:n8n": "node scripts/build-n8n-workflow.js && node scripts/build-n8n-project-dir-workflow.js",
+    "publish:n8n": "node scripts/publish-n8n-workflows.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "connect-pg-simple": "^10.0.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.5.2",
+    "express-session": "^1.18.2",
+    "helmet": "^8.2.0",
+    "jszip": "^3.10.1",
+    "multer": "^2.0.2",
+    "pg": "^8.16.3"
+  }
+}
