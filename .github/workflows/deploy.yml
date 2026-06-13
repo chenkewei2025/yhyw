@@ -1,0 +1,54 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rsync
+        run: sudo apt-get update && sudo apt-get install -y rsync
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync files to server
+        run: |
+          rsync -avz \
+            --rsync-path="sudo rsync" \
+            --exclude node_modules \
+            --exclude .git \
+            --exclude .env* \
+            --exclude .DS_Store \
+            --exclude npm-debug.log \
+            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
+            ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.REMOTE_DIR }}/
+
+      - name: Restart service on server
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "cd ${{ secrets.COMPOSE_DIR }} && \
+             docker compose up -d --no-build ${{ secrets.SERVICE_NAME }} && \
+             docker compose restart ${{ secrets.SERVICE_NAME }}"
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fsS "${{ secrets.HEALTH_URL }}" > /dev/null 2>&1; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i/15 - waiting..."
+            sleep 2
+          done
+          echo "Health check failed!"
+          exit 1
