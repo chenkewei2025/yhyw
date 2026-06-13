@@ -56,8 +56,29 @@ npm run dev
 - `N8N_API_BASE_URL=https://n8n.ccyinghe.com/api/v1`
 - `N8N_SOURCE_WORKFLOW_ID=86o21cTCHceBCfE1`
 - `N8N_API_KEY=你的 n8n API Key`
+- `GITHUB_API_BASE_URL=https://api.github.com`
+- `GITHUB_API_VERSION=2026-03-10`
+- `GITHUB_TOKEN=你的 GitHub Personal Access Token`
+- `GITHUB_OWNER=默认查询的 GitHub 用户名或组织名，可留空`
 - `SUBMISSION_WORKER_CONCURRENCY=2`，后台 PPTX 生成队列并发数
 - `ADMIN_PASSWORD=后台强密码，不要使用默认弱口令`
+
+## GitHub API
+
+GitHub API 通过后端代理调用，token 只放在服务端环境变量里，浏览器不会直接拿到密钥。
+
+建议创建 fine-grained personal access token，并按实际需要给最小权限。只读仓库信息、语言和提交记录时，通常选择目标仓库，并授予 `Contents: Read-only`；公开仓库也可用无私有权限的 token。
+
+已提供后台接口：
+
+- `GET /api/admin/github/status`：检查 GitHub API 是否已配置并返回当前 token 用户
+- `GET /api/admin/github/user`：返回当前 token 对应用户
+- `GET /api/admin/github/repos`：查询仓库列表，支持 `owner`、`ownerType=user|org|viewer|auto`、`page`、`perPage`
+- `GET /api/admin/github/repos/:owner/:repo`：查询仓库详情
+- `GET /api/admin/github/repos/:owner/:repo/languages`：查询仓库语言统计
+- `GET /api/admin/github/repos/:owner/:repo/commits`：查询最近提交，支持 `sha`、`page`、`perPage`
+
+本地登录后台后可用浏览器访问 `/api/admin/github/status` 验证连接。
 
 ## 前端功能
 

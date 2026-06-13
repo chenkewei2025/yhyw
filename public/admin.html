@@ -85,6 +85,45 @@
 
       <section class="panel">
         <div class="section-head">
+          <div>
+            <h2>GitHub 接入</h2>
+            <p id="githubStatus" class="muted">正在检查连接...</p>
+          </div>
+          <button id="refreshGithubBtn" class="secondary" type="button">刷新</button>
+        </div>
+        <div class="filters github-filters">
+          <label><span>Owner</span><input id="githubOwnerInput" placeholder="用户名或组织名"></label>
+          <label>
+            <span>类型</span>
+            <select id="githubOwnerType">
+              <option value="auto">自动识别</option>
+              <option value="viewer">当前 Token 用户</option>
+              <option value="user">用户公开仓库</option>
+              <option value="org">组织仓库</option>
+            </select>
+          </label>
+          <button id="loadGithubReposBtn" type="button">加载仓库</button>
+        </div>
+        <div class="table-wrap compact-table">
+          <table>
+            <thead>
+              <tr>
+                <th>仓库</th>
+                <th>可见性</th>
+                <th>语言</th>
+                <th>最近更新</th>
+                <th>链接</th>
+              </tr>
+            </thead>
+            <tbody id="githubRepoRows">
+              <tr><td colspan="5">暂无仓库数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
           <h2>报名清单</h2>
           <button id="exportBtn" class="secondary">导出 Excel</button>
         </div>
@@ -153,6 +192,6 @@
       </div>
     </dialog>
   </main>
-  <script src="/admin.js?v=login-name-display-name-20260608"></script>
+  <script src="/admin.js?v=github-api-admin-20260613"></script>
 </body>
 </html>

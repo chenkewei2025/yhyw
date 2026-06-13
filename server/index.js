@@ -19,6 +19,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.resolve(__dirname, '../public');
 const siteUrl = (process.env.SITE_URL || 'https://yh.ccyinghe.com').replace(/\/+$/, '');
+const githubApiBaseUrl = (process.env.GITHUB_API_BASE_URL || 'https://api.github.com').replace(/\/+$/, '');
+const githubApiVersion = process.env.GITHUB_API_VERSION || '2026-03-10';
+const githubToken = process.env.GITHUB_TOKEN || '';
+const githubOwner = String(process.env.GITHUB_OWNER || '').trim();
 const allowedOrigins = [...new Set([
   siteUrl,
   ...(process.env.ALLOWED_ORIGINS || '')
@@ -26,7 +30,7 @@ const allowedOrigins = [...new Set([
     .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean),
 ])];
-const appVersion = 'login-name-display-name-20260608';
+const appVersion = 'github-api-admin-20260613';
 const mergedPptxJobs = new Map();
 const submissionQueue = [];
 let activeSubmissionJobs = 0;
@@ -805,6 +809,62 @@ function extractWorkflowError(value) {
   return typeof message === 'string' ? message : '';
 }
 
+function githubHeaders() {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': githubApiVersion,
+    'User-Agent': 'model-card-portal',
+  };
+  if (githubToken) {
+    headers.Authorization = `Bearer ${githubToken}`;
+  }
+  return headers;
+}
+
+function extractGithubError(value) {
+  if (!value || typeof value !== 'object') return '';
+  const message = typeof value.message === 'string' ? value.message : '';
+  const errors = Array.isArray(value.errors)
+    ? value.errors
+      .map((item) => item?.message || item?.code || '')
+      .filter(Boolean)
+      .join('；')
+    : '';
+  return [message, errors].filter(Boolean).join('：');
+}
+
+async function githubJson(pathname, query = {}) {
+  const url = new URL(`${githubApiBaseUrl}${pathname}`);
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  const response = await fetch(url, { headers: githubHeaders() });
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { raw: text };
+  }
+  if (!response.ok) {
+    throw new Error(extractGithubError(data) || `GitHub API HTTP ${response.status}`);
+  }
+  return data;
+}
+
+function requireGithubToken(_req, res, next) {
+  if (githubToken) return next();
+  res.status(503).json({ error: '未配置 GITHUB_TOKEN，无法连接 GitHub API' });
+}
+
+function githubPageQuery(query) {
+  const page = Math.max(1, Number(query.page || 1) || 1);
+  const perPage = Math.min(100, Math.max(1, Number(query.perPage || query.per_page || 30) || 30));
+  return { page, per_page: perPage };
+}
+
 function queueSubmissionJob(submissionId) {
   submissionQueue.push(submissionId);
   processSubmissionQueue();
@@ -1208,6 +1268,157 @@ app.get('/api/admin/me', async (req, res, next) => {
   try {
     const admin = await loadSessionAdmin(req);
     res.json({ loggedIn: Boolean(admin), admin });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/admin/github/status', requireAdmin, async (_req, res, next) => {
+  try {
+    if (!githubToken) {
+      res.json({
+        configured: false,
+        apiBaseUrl: githubApiBaseUrl,
+        owner: githubOwner,
+        message: '未配置 GITHUB_TOKEN',
+      });
+      return;
+    }
+    const user = await githubJson('/user');
+    res.json({
+      configured: true,
+      apiBaseUrl: githubApiBaseUrl,
+      owner: githubOwner,
+      user: {
+        login: user.login,
+        name: user.name,
+        type: user.type,
+        avatarUrl: user.avatar_url,
+        htmlUrl: user.html_url,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/admin/github/user', requireAdmin, requireGithubToken, async (_req, res, next) => {
+  try {
+    const user = await githubJson('/user');
+    res.json({ user });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/admin/github/repos', requireAdmin, requireGithubToken, async (req, res, next) => {
+  try {
+    const owner = cleanName(req.query.owner || githubOwner);
+    const ownerType = cleanName(req.query.ownerType || req.query.type || 'auto').toLowerCase();
+    const pageQuery = githubPageQuery(req.query);
+    let repos;
+
+    if (!owner || ownerType === 'viewer') {
+      repos = await githubJson('/user/repos', {
+        ...pageQuery,
+        visibility: cleanName(req.query.visibility || 'all'),
+        affiliation: cleanName(req.query.affiliation || 'owner,collaborator,organization_member'),
+        sort: cleanName(req.query.sort || 'updated'),
+        direction: cleanName(req.query.direction || 'desc'),
+      });
+    } else {
+      let resolvedOwnerType = ownerType;
+      if (resolvedOwnerType === 'auto') {
+        const ownerInfo = await githubJson(`/users/${encodeURIComponent(owner)}`);
+        if (ownerInfo.type !== 'Organization') {
+          const viewer = await githubJson('/user');
+          resolvedOwnerType = viewer.login === ownerInfo.login ? 'viewer' : 'user';
+        } else {
+          resolvedOwnerType = 'org';
+        }
+      }
+      if (resolvedOwnerType === 'viewer') {
+        repos = await githubJson('/user/repos', {
+          ...pageQuery,
+          visibility: cleanName(req.query.visibility || 'all'),
+          affiliation: cleanName(req.query.affiliation || 'owner,collaborator,organization_member'),
+          sort: cleanName(req.query.sort || 'updated'),
+          direction: cleanName(req.query.direction || 'desc'),
+        });
+      } else {
+        const endpoint = resolvedOwnerType === 'org' || resolvedOwnerType === 'organization'
+          ? `/orgs/${encodeURIComponent(owner)}/repos`
+          : `/users/${encodeURIComponent(owner)}/repos`;
+        repos = await githubJson(endpoint, {
+          ...pageQuery,
+          type: cleanName(req.query.repoType || 'all'),
+          sort: cleanName(req.query.sort || 'updated'),
+          direction: cleanName(req.query.direction || 'desc'),
+        });
+      }
+    }
+
+    res.json({
+      repos: repos.map((repo) => ({
+        id: repo.id,
+        name: repo.name,
+        fullName: repo.full_name,
+        private: repo.private,
+        description: repo.description,
+        defaultBranch: repo.default_branch,
+        htmlUrl: repo.html_url,
+        cloneUrl: repo.clone_url,
+        sshUrl: repo.ssh_url,
+        language: repo.language,
+        stargazersCount: repo.stargazers_count,
+        forksCount: repo.forks_count,
+        openIssuesCount: repo.open_issues_count,
+        pushedAt: repo.pushed_at,
+        updatedAt: repo.updated_at,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/admin/github/repos/:owner/:repo', requireAdmin, requireGithubToken, async (req, res, next) => {
+  try {
+    const repo = await githubJson(`/repos/${encodeURIComponent(req.params.owner)}/${encodeURIComponent(req.params.repo)}`);
+    res.json({ repo });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/admin/github/repos/:owner/:repo/languages', requireAdmin, requireGithubToken, async (req, res, next) => {
+  try {
+    const languages = await githubJson(`/repos/${encodeURIComponent(req.params.owner)}/${encodeURIComponent(req.params.repo)}/languages`);
+    res.json({ languages });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/admin/github/repos/:owner/:repo/commits', requireAdmin, requireGithubToken, async (req, res, next) => {
+  try {
+    const commits = await githubJson(
+      `/repos/${encodeURIComponent(req.params.owner)}/${encodeURIComponent(req.params.repo)}/commits`,
+      {
+        ...githubPageQuery(req.query),
+        sha: cleanName(req.query.sha),
+      }
+    );
+    res.json({
+      commits: commits.map((item) => ({
+        sha: item.sha,
+        htmlUrl: item.html_url,
+        message: item.commit?.message || '',
+        authorName: item.commit?.author?.name || item.author?.login || '',
+        authorLogin: item.author?.login || '',
+        date: item.commit?.author?.date || item.commit?.committer?.date || '',
+      })),
+    });
   } catch (error) {
     next(error);
   }

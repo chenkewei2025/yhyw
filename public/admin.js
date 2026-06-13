@@ -27,6 +27,12 @@ const projectRoleSummaryCount = document.querySelector('#projectRoleSummaryCount
 const cleanupExpiredProjectsBtn = document.querySelector('#cleanupExpiredProjectsBtn');
 const mergePptxBtn = document.querySelector('#mergePptxBtn');
 const downloadMergedPptxBtn = document.querySelector('#downloadMergedPptxBtn');
+const githubStatus = document.querySelector('#githubStatus');
+const githubOwnerInput = document.querySelector('#githubOwnerInput');
+const githubOwnerType = document.querySelector('#githubOwnerType');
+const refreshGithubBtn = document.querySelector('#refreshGithubBtn');
+const loadGithubReposBtn = document.querySelector('#loadGithubReposBtn');
+const githubRepoRows = document.querySelector('#githubRepoRows');
 
 let projects = [];
 let mergedPptxDownloadUrl = '';
@@ -35,6 +41,7 @@ let selectedFilterRoles = [];
 let submissionRequestId = 0;
 let currentAdmin = null;
 let users = [];
+let githubConfigured = false;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -213,6 +220,21 @@ function renderProjectRoleSummary(items) {
   projectRoleSummaryRows.innerHTML = rows.join('') || '<tr><td colspan="4">暂无项目</td></tr>';
 }
 
+function renderGithubRepos(repos) {
+  githubRepoRows.innerHTML = (repos || []).map((repo) => `
+    <tr>
+      <td>
+        <strong>${escapeHtml(repo.fullName || repo.name)}</strong>
+        ${repo.description ? `<div class="meta">${escapeHtml(repo.description)}</div>` : ''}
+      </td>
+      <td>${repo.private ? '私有' : '公开'}</td>
+      <td>${escapeHtml(repo.language || '-')}</td>
+      <td>${repo.updatedAt ? escapeHtml(repo.updatedAt.slice(0, 10)) : '-'}</td>
+      <td><a href="${escapeAttr(repo.htmlUrl)}" target="_blank" rel="noopener">打开</a></td>
+    </tr>
+  `).join('') || '<tr><td colspan="5">暂无仓库数据</td></tr>';
+}
+
 function renderFilterRoles() {
   const items = filterRoleItems();
   const itemIds = items.map((item) => item.id);
@@ -300,6 +322,50 @@ async function loadProjectRoleSummary() {
   renderProjectRoleSummary(data.projects || []);
 }
 
+async function loadGithubStatus() {
+  githubStatus.textContent = '正在检查连接...';
+  githubStatus.classList.remove('error');
+  const data = await api('/api/admin/github/status');
+  githubConfigured = Boolean(data.configured);
+  githubOwnerInput.value = data.owner || data.user?.login || '';
+  loadGithubReposBtn.disabled = !githubConfigured;
+  if (!githubConfigured) {
+    githubStatus.textContent = data.message || '未配置 GitHub Token';
+    renderGithubRepos([]);
+    return;
+  }
+  const userLabel = [data.user?.login, data.user?.name].filter(Boolean).join(' / ');
+  githubStatus.textContent = `已连接：${userLabel || 'GitHub'}${data.owner ? `，默认 Owner：${data.owner}` : ''}`;
+}
+
+async function loadGithubRepos() {
+  if (!githubConfigured) {
+    await loadGithubStatus();
+    if (!githubConfigured) return;
+  }
+  const params = new URLSearchParams({
+    owner: githubOwnerInput.value.trim(),
+    ownerType: githubOwnerType.value,
+    perPage: '50',
+  });
+  githubRepoRows.innerHTML = '<tr><td colspan="5">正在加载仓库...</td></tr>';
+  const data = await api(`/api/admin/github/repos?${params.toString()}`);
+  renderGithubRepos(data.repos || []);
+}
+
+async function loadGithubPanel() {
+  try {
+    await loadGithubStatus();
+    if (githubConfigured) await loadGithubRepos();
+  } catch (error) {
+    githubConfigured = false;
+    loadGithubReposBtn.disabled = true;
+    githubStatus.textContent = error.message;
+    githubStatus.classList.add('error');
+    renderGithubRepos([]);
+  }
+}
+
 async function loadSubmissions() {
   const requestId = ++submissionRequestId;
   activeSubmissionFilters = currentSubmissionFilters();
@@ -332,6 +398,7 @@ loginForm.addEventListener('submit', async (event) => {
     await loadProjects();
     await loadProjectOptions();
     await loadProjectRoleSummary();
+    await loadGithubPanel();
     await loadSubmissions();
   } catch (error) {
     loginStatus.textContent = error.message;
@@ -486,6 +553,30 @@ cleanupExpiredProjectsBtn.addEventListener('click', async () => {
   }
 });
 
+refreshGithubBtn.addEventListener('click', async () => {
+  try {
+    refreshGithubBtn.disabled = true;
+    await loadGithubPanel();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    refreshGithubBtn.disabled = false;
+  }
+});
+
+loadGithubReposBtn.addEventListener('click', async () => {
+  try {
+    loadGithubReposBtn.disabled = true;
+    await loadGithubRepos();
+  } catch (error) {
+    githubStatus.textContent = error.message;
+    githubStatus.classList.add('error');
+    renderGithubRepos([]);
+  } finally {
+    loadGithubReposBtn.disabled = !githubConfigured;
+  }
+});
+
 projectList.addEventListener('click', async (event) => {
   const button = event.target.closest('button');
   if (!button) return;
@@ -594,6 +685,7 @@ api('/api/admin/me')
       await loadProjects();
       await loadProjectOptions();
       await loadProjectRoleSummary();
+      await loadGithubPanel();
       await loadSubmissions();
     }
   })

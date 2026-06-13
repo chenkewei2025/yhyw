@@ -93,7 +93,7 @@ if [[ "${BUILD:-0}" == "1" ]]; then
 fi
 remote_cmd+="docker compose up -d --no-build \"$service\""$'\n'
 remote_cmd+="docker compose restart \"$service\""$'\n'
-remote_cmd+="docker compose exec -T \"$service\" sh -lc 'grep -n \"login-name-display-name-20260608\" \"$app_container_dir/public/admin.html\"; grep -n \"login-name-display-name-20260608\" \"$app_container_dir/server/index.js\"; grep -n \"openUserDialogBtn\" \"$app_container_dir/public/admin.html\"'"$'\n'
+remote_cmd+="docker compose exec -T \"$service\" sh -lc 'grep -n \"github-api-admin-20260613\" \"$app_container_dir/public/admin.html\"; grep -n \"github-api-admin-20260613\" \"$app_container_dir/server/index.js\"; grep -n \"githubStatus\" \"$app_container_dir/public/admin.html\"'"$'\n'
 remote_cmd+="for i in \$(seq 1 15); do curl -fsS \"$health_url\" && break; if [ \"\$i\" -eq 15 ]; then exit 1; fi; sleep 2; done"$'\n'
 remote_cmd+="echo"$'\n'
 

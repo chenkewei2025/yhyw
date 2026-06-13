@@ -102,6 +102,10 @@ small,
   margin-bottom: 16px;
 }
 
+.github-filters {
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) auto;
+}
+
 label,
 .project-intro {
   display: grid;
@@ -453,11 +457,19 @@ td a {
   font-weight: 650;
 }
 
+td .meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
   .form-grid,
   .admin-grid,
   .two-col,
-  .filters {
+  .filters,
+  .github-filters {
     grid-template-columns: 1fr;
   }
 
