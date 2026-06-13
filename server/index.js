@@ -30,7 +30,7 @@ const allowedOrigins = [...new Set([
     .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean),
 ])];
-const appVersion = 'github-api-admin-20260613';
+const appVersion = 'admin-no-github-panel-20260614';
 const mergedPptxJobs = new Map();
 const submissionQueue = [];
 let activeSubmissionJobs = 0;
