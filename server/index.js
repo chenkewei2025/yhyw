@@ -35,7 +35,7 @@ const appVersion = 'admin-no-github-panel-20260614';
 const mergedPptxJobs = new Map();
 const submissionQueue = [];
 let activeSubmissionJobs = 0;
-const submissionWorkerConcurrency = Math.max(1, Number(process.env.SUBMISSION_WORKER_CONCURRENCY || 2) || 2);
+const submissionWorkerConcurrency = Math.max(1, Number(process.env.SUBMISSION_WORKER_CONCURRENCY || 1) || 1);
 const configuredSessionSecret = process.env.SESSION_SECRET || '';
 const weakSessionSecret = !configuredSessionSecret
   || configuredSessionSecret === 'change-this-to-a-long-random-secret'
@@ -1194,8 +1194,8 @@ app.post('/api/submissions', submissionLimiter, upload.fields([
 
     const personName = extractName(introText);
     const submittedAt = new Date();
-    const stamp = submittedAt.toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
-    const modelName = safeFileName(`${personName}_${phone}_${rows[0].role_name}_${stamp}`);
+    const stamp = submittedAt.toISOString().replace(/[-:T.Z]/g, '').slice(0, 17);
+    const modelName = safeFileName(`${personName}_${phone}_${rows[0].role_name}_${stamp}_${crypto.randomBytes(3).toString('hex')}`);
     const downloadToken = crypto.randomBytes(24).toString('hex');
 
     const payload = {
