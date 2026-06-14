@@ -300,6 +300,55 @@ function readStoredPptx(row) {
   return buffer.length ? buffer : null;
 }
 
+function removePptxFile(filePath) {
+  const diskPath = safePptxDiskPath(filePath);
+  if (!diskPath || !fs.existsSync(diskPath)) return false;
+  fs.unlinkSync(diskPath);
+  return true;
+}
+
+async function deleteRolePptxFiles(client, role) {
+  const { rows } = await client.query(
+    `SELECT id, pptx_disk_path
+     FROM model_card_submissions
+     WHERE project_id = $1 AND role_id = $2`,
+    [role.project_id, role.id]
+  );
+  const diskPaths = [...new Set(rows.map((row) => safePptxDiskPath(row.pptx_disk_path)).filter(Boolean))];
+  const deletedFiles = [];
+
+  if (diskPaths.length) {
+    const referenced = await client.query(
+      `SELECT DISTINCT pptx_disk_path
+       FROM model_card_submissions
+       WHERE pptx_disk_path = ANY($1::text[])
+         AND NOT (project_id = $2 AND role_id = $3)`,
+      [diskPaths, role.project_id, role.id]
+    );
+    const sharedPaths = new Set(referenced.rows.map((row) => safePptxDiskPath(row.pptx_disk_path)).filter(Boolean));
+    for (const diskPath of diskPaths) {
+      if (sharedPaths.has(diskPath)) continue;
+      if (removePptxFile(diskPath)) deletedFiles.push(diskPath);
+    }
+  }
+
+  const cleared = await client.query(
+    `UPDATE model_card_submissions
+     SET pptx_file_name = NULL,
+         pptx_disk_path = NULL,
+         pptx_url = NULL,
+         pptx_base64 = NULL,
+         updated_at = NOW()
+     WHERE project_id = $1 AND role_id = $2`,
+    [role.project_id, role.id]
+  );
+
+  return {
+    submissionCount: cleared.rowCount,
+    deletedFileCount: deletedFiles.length,
+  };
+}
+
 function fileToPayload(file, kind) {
   if (!file) return null;
   const imageInfo = kind === 'image' ? detectImage(file.buffer) : null;
@@ -1890,23 +1939,32 @@ app.post('/api/admin/projects/:id/roles', requireAdmin, async (req, res, next) =
 });
 
 app.delete('/api/admin/roles/:id', requireAdmin, async (req, res, next) => {
+  const client = await pool.connect();
   try {
-    const role = await pool.query(
-      `SELECT r.id, p.created_by
+    await client.query('BEGIN');
+    const role = await client.query(
+      `SELECT r.id, r.project_id, p.created_by
        FROM model_card_roles r
        JOIN model_card_projects p ON p.id = r.project_id
-       WHERE r.id = $1`,
+       WHERE r.id = $1
+       FOR UPDATE OF r`,
       [req.params.id]
     );
     if (!role.rows[0]) throw new Error('职别不存在');
     if (!canMaintainProject(req.admin, role.rows[0])) {
+      await client.query('ROLLBACK');
       res.status(403).json({ error: '只能维护自己创建项目的职别' });
       return;
     }
-    await pool.query('DELETE FROM model_card_roles WHERE id = $1', [req.params.id]);
-    res.json({ ok: true });
+    const pptxCleanup = await deleteRolePptxFiles(client, role.rows[0]);
+    await client.query('DELETE FROM model_card_roles WHERE id = $1', [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ ok: true, pptxCleanup });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     next(error);
+  } finally {
+    client.release();
   }
 });
 
