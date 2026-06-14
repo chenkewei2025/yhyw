@@ -962,6 +962,13 @@ function extractWorkflowError(value) {
   return typeof message === 'string' ? message : '';
 }
 
+function normalizeN8nResult(result) {
+  const firstResult = Array.isArray(result) ? (result[0] || {}) : result;
+  return firstResult?.json && typeof firstResult.json === 'object'
+    ? firstResult.json
+    : firstResult;
+}
+
 function publicPptxFailureMessage(error) {
   const message = String(error || '').trim();
   if (!message) return 'PPTX 生成失败，请联系管理员处理';
@@ -1093,7 +1100,7 @@ async function processSubmissionJob(submissionId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const n8nResult = Array.isArray(n8nRawResult) ? (n8nRawResult[0] || {}) : n8nRawResult;
+    const n8nResult = normalizeN8nResult(n8nRawResult);
     const workflowError = extractWorkflowError(n8nResult);
     const diskResult = !n8nResult.pptx_base64
       ? readN8nPptxResult(payload) || readPptxResultFromPath(n8nResult.pptx_disk_path)
@@ -1170,10 +1177,7 @@ async function syncProjectDir(payload, options = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const firstResult = Array.isArray(result) ? (result[0] || {}) : result;
-    const normalizedResult = firstResult?.json && typeof firstResult.json === 'object'
-      ? firstResult.json
-      : firstResult;
+    const normalizedResult = normalizeN8nResult(result);
     if (normalizedResult?.success === false) {
       throw new Error(normalizedResult.error || 'n8n 项目目录同步失败');
     }
