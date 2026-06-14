@@ -366,6 +366,7 @@ async function deleteRolePptxFiles(client, role) {
   return {
     submissionCount: cleared.rowCount,
     deletedFileCount: deletedFiles.length,
+    diskPaths,
   };
 }
 
@@ -2035,7 +2036,19 @@ app.delete('/api/admin/roles/:id', requireAdmin, async (req, res, next) => {
     const pptxCleanup = await deleteRolePptxFiles(client, role.rows[0]);
     await client.query('DELETE FROM model_card_roles WHERE id = $1', [req.params.id]);
     await client.query('COMMIT');
-    res.json({ ok: true, pptxCleanup });
+    const fileCleanup = pptxCleanup.diskPaths.length
+      ? await syncProjectDir({ action: 'rm-files', filePaths: pptxCleanup.diskPaths })
+      : null;
+    res.json({
+      ok: true,
+      pptxCleanup: {
+        ...pptxCleanup,
+        deletedFileCount: Math.max(pptxCleanup.deletedFileCount, Number(fileCleanup?.deletedFileCount || 0)),
+        n8nDeletedFileCount: Number(fileCleanup?.deletedFileCount || 0),
+        n8nDirSynced: !pptxCleanup.diskPaths.length || Boolean(fileCleanup),
+        diskPaths: undefined,
+      },
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

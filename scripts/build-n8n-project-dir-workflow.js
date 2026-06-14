@@ -37,8 +37,9 @@ const body = input.body || input;
 const action = String(body.action || 'mkdir');
 const projectName = String(body.projectName || '').trim();
 const oldProjectName = String(body.oldProjectName || '').trim();
+const filePaths = Array.isArray(body.filePaths) ? body.filePaths : [];
 
-if (!projectName) {
+if (!projectName && action !== 'rm-files') {
   return [{ json: { success: false, error: 'projectName required' } }];
 }
 
@@ -52,6 +53,29 @@ const oldDir = oldProjectName ? path.resolve(root, clean(oldProjectName)) : null
 
 if (!dir.startsWith(root + path.sep) || (oldDir && !oldDir.startsWith(root + path.sep))) {
   return [{ json: { success: false, error: 'unsafe path', dir } }];
+}
+
+function safePptxPath(value) {
+  const filePath = path.resolve(String(value || ''));
+  if (!filePath.startsWith(root + path.sep)) return '';
+  if (path.extname(filePath).toLowerCase() !== '.pptx') return '';
+  return filePath;
+}
+
+if (action === 'rm-files') {
+  const deleted = [];
+  const missing = [];
+  for (const item of filePaths) {
+    const filePath = safePptxPath(item);
+    if (!filePath) continue;
+    if (!fs.existsSync(filePath)) {
+      missing.push(filePath);
+      continue;
+    }
+    fs.unlinkSync(filePath);
+    deleted.push(filePath);
+  }
+  return [{ json: { success: true, action, deleted, missing, deletedFileCount: deleted.length } }];
 }
 
 if (action === 'rm') {
