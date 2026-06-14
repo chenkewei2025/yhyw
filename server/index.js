@@ -19,6 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.resolve(__dirname, '../public');
 const siteUrl = (process.env.SITE_URL || 'https://yh.ccyinghe.com').replace(/\/+$/, '');
+const n8nPptxOutputRoot = process.env.N8N_PPTX_OUTPUT_ROOT || '/home/node/.n8n-files/model-card';
 const githubApiBaseUrl = (process.env.GITHUB_API_BASE_URL || 'https://api.github.com').replace(/\/+$/, '');
 const githubApiVersion = process.env.GITHUB_API_VERSION || '2026-03-10';
 const githubToken = process.env.GITHUB_TOKEN || '';
@@ -217,7 +218,86 @@ function safeFileName(value) {
 }
 
 function projectDiskDir(name) {
-  return `/home/node/.n8n-files/model-card/${safeFileName(name)}/`;
+  return `${n8nPptxOutputRoot.replace(/\/+$/, '')}/${safeFileName(name)}/`;
+}
+
+function n8nPptxDiskPath(payload) {
+  const projectName = safeFileName(payload?.projectName || 'model_card');
+  const fileName = `${safeFileName(payload?.modelName || 'model_card')}.pptx`;
+  return path.join(n8nPptxOutputRoot, projectName, fileName);
+}
+
+function readN8nPptxResult(payload) {
+  const diskPath = n8nPptxDiskPath(payload);
+  if (!fs.existsSync(diskPath)) return null;
+  const buffer = fs.readFileSync(diskPath);
+  if (!buffer.length) return null;
+  return {
+    success: true,
+    pptx_file_name: path.basename(diskPath),
+    pptx_disk_path: diskPath,
+    pptx_base64: buffer.toString('base64'),
+    recovered_from_disk: true,
+  };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForN8nPptxResult(payload, timeoutMs = 15000) {
+  const startedAt = Date.now();
+  let result = readN8nPptxResult(payload);
+  while (!result && Date.now() - startedAt < timeoutMs) {
+    await sleep(1000);
+    result = readN8nPptxResult(payload);
+  }
+  return result;
+}
+
+async function recoverSubmissionFromDisk(row, warning) {
+  const queuedPayload = row?.n8n_response?.queuedPayload;
+  if (row?.status === 'done' || !queuedPayload) return row;
+  const diskResult = readN8nPptxResult(queuedPayload);
+  if (!diskResult) return row;
+  const { rows } = await pool.query(
+    `UPDATE model_card_submissions
+     SET status = 'done',
+         pptx_file_name = $2,
+         pptx_disk_path = $3,
+         pptx_base64 = $4,
+         pptx_url = $5,
+         n8n_response = $6,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING status, pptx_file_name, pptx_disk_path, pptx_url, n8n_response`,
+    [
+      row.id,
+      diskResult.pptx_file_name,
+      diskResult.pptx_disk_path,
+      diskResult.pptx_base64,
+      `${siteUrl}/api/submissions/download/${row.download_token}`,
+      { ...row.n8n_response, ...diskResult, pptx_base64: undefined, warning },
+    ]
+  );
+  return { ...row, ...rows[0] };
+}
+
+function safePptxDiskPath(value) {
+  if (!value) return '';
+  const root = path.resolve(n8nPptxOutputRoot);
+  const filePath = path.resolve(String(value));
+  if (!filePath.startsWith(`${root}${path.sep}`)) return '';
+  if (path.extname(filePath).toLowerCase() !== '.pptx') return '';
+  return filePath;
+}
+
+function readStoredPptx(row) {
+  if (row?.pptx_base64) return Buffer.from(row.pptx_base64, 'base64');
+  const diskPath = safePptxDiskPath(row?.pptx_disk_path);
+  if (!diskPath || !fs.existsSync(diskPath)) return null;
+  const buffer = fs.readFileSync(diskPath);
+  return buffer.length ? buffer : null;
 }
 
 function fileToPayload(file, kind) {
@@ -934,6 +1014,10 @@ async function processSubmissionJob(submissionId) {
     const n8nResult = Array.isArray(n8nRawResult) ? (n8nRawResult[0] || {}) : n8nRawResult;
     const workflowError = extractWorkflowError(n8nResult);
     const doneStatus = n8nResult.success === false ? 'failed' : 'done';
+    const diskResult = doneStatus === 'done' && !n8nResult.pptx_base64 ? readN8nPptxResult(payload) : null;
+    const pptxFileName = n8nResult.pptx_file_name || n8nResult.file_name || diskResult?.pptx_file_name || `${payload.modelName}.pptx`;
+    const pptxDiskPath = n8nResult.pptx_disk_path || diskResult?.pptx_disk_path || null;
+    const pptxBase64 = n8nResult.pptx_base64 || diskResult?.pptx_base64 || null;
 
     await pool.query(
       `UPDATE model_card_submissions
@@ -948,14 +1032,37 @@ async function processSubmissionJob(submissionId) {
       [
         submissionId,
         doneStatus,
-        doneStatus === 'done' ? n8nResult.pptx_file_name || n8nResult.file_name || `${payload.modelName}.pptx` : null,
-        doneStatus === 'done' ? n8nResult.pptx_disk_path || null : null,
-        doneStatus === 'done' ? n8nResult.pptx_base64 || null : null,
+        doneStatus === 'done' ? pptxFileName : null,
+        doneStatus === 'done' ? pptxDiskPath : null,
+        doneStatus === 'done' ? pptxBase64 : null,
         doneStatus === 'done' ? `${siteUrl}/api/submissions/download/${row.download_token}` : null,
-        workflowError ? { ...n8nResult, error: workflowError } : n8nResult,
+        workflowError ? { ...n8nResult, error: workflowError } : { ...n8nResult, pptx_base64: undefined },
       ]
     );
   } catch (error) {
+    const diskResult = await waitForN8nPptxResult(payload);
+    if (diskResult) {
+      await pool.query(
+        `UPDATE model_card_submissions
+         SET status = 'done',
+             pptx_file_name = $2,
+             pptx_disk_path = $3,
+             pptx_base64 = $4,
+             pptx_url = $5,
+             n8n_response = $6,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [
+          submissionId,
+          diskResult.pptx_file_name,
+          diskResult.pptx_disk_path,
+          diskResult.pptx_base64,
+          `${siteUrl}/api/submissions/download/${row.download_token}`,
+          { ...diskResult, pptx_base64: undefined, warning: `n8n 返回异常，已从磁盘恢复：${error.message || '未知错误'}` },
+        ]
+      );
+      return;
+    }
     await pool.query(
       `UPDATE model_card_submissions
        SET status = 'failed',
@@ -1171,11 +1278,14 @@ app.get('/api/submissions/:id/status', async (req, res, next) => {
        ) submission_status`,
       [req.params.id, cleanName(req.query.token)]
     );
-    const row = rows[0];
+    let row = rows[0];
     if (!row) {
       res.status(404).json({ error: '报名记录不存在或校验失败' });
       return;
     }
+
+    row = await recoverSubmissionFromDisk(row, '状态查询时从已落盘 PPTX 恢复');
+
     const error = row.status === 'failed'
       ? row.n8n_response?.error || row.n8n_response?.message || 'n8n 生成失败'
       : '';
@@ -1199,17 +1309,18 @@ app.get('/api/submissions/:id/status', async (req, res, next) => {
 app.get('/api/submissions/download/:token', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT pptx_base64, pptx_file_name FROM model_card_submissions WHERE download_token = $1`,
+      `SELECT pptx_base64, pptx_disk_path, pptx_file_name FROM model_card_submissions WHERE download_token = $1`,
       [req.params.token]
     );
     const row = rows[0];
-    if (!row?.pptx_base64) {
+    const pptxBuffer = readStoredPptx(row);
+    if (!pptxBuffer) {
       res.status(404).json({ error: 'PPTX 文件尚未生成或未保存下载数据' });
       return;
     }
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName(row.pptx_file_name || 'model_card.pptx'))}`);
-    res.send(Buffer.from(row.pptx_base64, 'base64'));
+    res.send(pptxBuffer);
   } catch (error) {
     next(error);
   }
@@ -1218,17 +1329,18 @@ app.get('/api/submissions/download/:token', async (req, res, next) => {
 app.get('/api/submissions/:id/download', requireAdmin, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT pptx_base64, pptx_file_name FROM model_card_submissions WHERE id = $1`,
+      `SELECT pptx_base64, pptx_disk_path, pptx_file_name FROM model_card_submissions WHERE id = $1`,
       [req.params.id]
     );
     const row = rows[0];
-    if (!row?.pptx_base64) {
+    const pptxBuffer = readStoredPptx(row);
+    if (!pptxBuffer) {
       res.status(404).json({ error: 'PPTX 文件尚未生成或未保存下载数据' });
       return;
     }
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName(row.pptx_file_name || 'model_card.pptx'))}`);
-    res.send(Buffer.from(row.pptx_base64, 'base64'));
+    res.send(pptxBuffer);
   } catch (error) {
     next(error);
   }
@@ -1803,15 +1915,22 @@ app.get('/api/admin/submissions', requireAdmin, async (req, res, next) => {
     const { params, where } = submissionFilters(req.query);
     const { rows } = await pool.query(
       dedupedSubmissionsSql(
-        'id, project_name, person_name, role_name, phone, wechat, pptx_url, pptx_disk_path, pptx_file_name, status, submitted_at',
+        'id, project_name, person_name, role_name, phone, wechat, pptx_url, pptx_disk_path, pptx_file_name, status, submitted_at, download_token, n8n_response',
         where
       ),
       params
     );
-    rows.forEach((row) => {
+    const submissions = [];
+    for (const row of rows) {
+      const submission = await recoverSubmissionFromDisk(row, '后台列表查询时从已落盘 PPTX 恢复');
+      delete submission.download_token;
+      delete submission.n8n_response;
+      submissions.push(submission);
+    }
+    submissions.forEach((row) => {
       row.pptx_url = absoluteSiteUrl(row.pptx_url);
     });
-    res.json({ submissions: rows });
+    res.json({ submissions });
   } catch (error) {
     next(error);
   }

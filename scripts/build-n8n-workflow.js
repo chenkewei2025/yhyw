@@ -221,7 +221,6 @@ return [{
     pptx_file_name: fileName,
     pptx_disk_path: finalDir && fileName ? finalDir + fileName : null,
     pptx_base64_field: base64Field,
-    pptx_base64: base64Field ? code[base64Field] : null,
     pages: code.pages,
     warning: code.warning || (diskWrite.disk_write_error ? 'PPTX 已生成，但写入项目目录失败：' + diskWrite.disk_write_error : null),
     disk_write_success: diskWrite.disk_write_success === true,
