@@ -249,6 +249,10 @@ pythonClone.parameters.pythonCode = pythonClone.parameters.pythonCode.replace(
   '(".jpg", ".jpeg", ".png", ".webp")',
   '(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")',
 );
+pythonClone.parameters.pythonCode = pythonClone.parameters.pythonCode.replace(
+  'elif lf.endswith(".mp4"):',
+  'elif any(lf.endswith(ext) for ext in (".mp4", ".m4v", ".mov")):',
+);
 
 const convertClone = structuredClone(convertNode);
 convertClone.id = id();

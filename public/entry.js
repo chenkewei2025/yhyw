@@ -260,18 +260,16 @@ async function pollSubmissionStatus(statusUrl, formData) {
     if (data.status === 'failed') {
       stopSubmissionStatusPolling();
       setSubmissionLocked(false);
-      setStatus(`报名失败：${data.error || 'PPTX 生成失败，请联系管理员处理'}`, true);
+      setStatus('报名失败：PPTX 生成失败，请联系管理员处理', true);
       return;
     }
 
-    setStatus(data.status === 'queued'
-      ? '报名已提交，等待生成 PPTX...'
-      : '报名已提交，正在生成 PPTX，请稍候...');
+    setStatus('PPTX 生成中，请稍候...');
     submissionStatusTimer = setTimeout(() => pollSubmissionStatus(statusUrl, formData), 2000);
   } catch (error) {
     stopSubmissionStatusPolling();
     setSubmissionLocked(false);
-    setStatus(`报名失败：PPTX 状态查询失败，${error.message}`, true);
+    setStatus('报名失败：PPTX 生成失败，请联系管理员处理', true);
   }
 }
 
@@ -324,7 +322,7 @@ form.addEventListener('submit', async (event) => {
 
     submitted = true;
     setSubmissionLocked(true, '生成中...');
-    setStatus('报名已提交，等待生成 PPTX...');
+    setStatus('PPTX 生成中，请稍候...');
     pollSubmissionStatus(data.statusUrl, formData);
   } catch (error) {
     if (!submitted) setSubmissionLocked(false);
