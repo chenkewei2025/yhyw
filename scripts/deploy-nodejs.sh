@@ -28,6 +28,7 @@ Environment overrides:
   SSH_OPTS="-i ~/.ssh/model-card-deploy"
   YES=1
   SKIP_PUSH=1
+  GIT_HTTP_VERSION=HTTP/1.1
   INSTALL_CMD="npm install --omit=dev"
   RESTART_CMD="docker compose restart nodejs"
 
@@ -53,6 +54,7 @@ container="${CONTAINER:-$service}"
 app_user="${APP_USER:-node:node}"
 health_url="${HEALTH_URL:-https://yh.ccyinghe.com/health}"
 ssh_opts="${SSH_OPTS:-}"
+git_http_version="${GIT_HTTP_VERSION:-HTTP/1.1}"
 install_cmd="${INSTALL_CMD:-npm install --omit=dev}"
 restart_cmd="${RESTART_CMD:-docker compose restart $service}"
 
@@ -124,6 +126,7 @@ compose_dir="$compose_dir"
 container="$container"
 app_user="$app_user"
 health_url="$health_url"
+git_http_version="$git_http_version"
 install_cmd="$install_cmd"
 restart_cmd="$restart_cmd"
 expected_head="$local_head"
@@ -141,7 +144,7 @@ if [ ! -d .git ]; then
     mv "\$remote_app_dir" "\$backup_dir"
     mkdir -p "\$remote_app_dir"
   fi
-  git clone --branch "\$branch" --single-branch "\$git_remote_url" "\$remote_app_dir"
+  git -c http.version="\$git_http_version" clone --branch "\$branch" --single-branch "\$git_remote_url" "\$remote_app_dir"
   for env_file in .env .env.local .env.production; do
     if [ -f "\$backup_dir/\$env_file" ] && [ ! -f "\$remote_app_dir/\$env_file" ]; then
       cp "\$backup_dir/\$env_file" "\$remote_app_dir/\$env_file"
@@ -175,7 +178,7 @@ rollback() {
 trap rollback EXIT
 
 echo "Pulling GitHub code on host..."
-git fetch origin "\$branch" --prune
+git -c http.version="\$git_http_version" fetch origin "\$branch" --prune
 if git rev-parse --verify "\$branch" >/dev/null 2>&1; then
   git checkout "\$branch"
 else
