@@ -11,6 +11,7 @@ Usage:
 Environment overrides:
   REMOTE_APP_DIR=/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal
   CONTAINER=nodejs
+  APP_USER=node:node
   CONTAINER_APP_DIR=/usr/src/app/model-card-portal
   COMPOSE_DIR=/home/ubuntu
   SERVICE=nodejs
@@ -36,18 +37,32 @@ else
 fi
 
 container_app_dir="${CONTAINER_APP_DIR:-/usr/src/app/model-card-portal}"
+app_user="${APP_USER:-node:node}"
 compose_dir="${COMPOSE_DIR:-/home/ubuntu}"
 service="${SERVICE:-nodejs}"
 health_url="${HEALTH_URL:-https://yh.ccyinghe.com/health}"
 install_cmd="${INSTALL_CMD:-npm install --omit=dev}"
 restart_cmd="${RESTART_CMD:-docker compose restart $service}"
 
-if [[ ! -d "$remote_app_dir/.git" ]]; then
-  echo "Error: $remote_app_dir is not a git repository." >&2
-  exit 1
-fi
-
+mkdir -p "$remote_app_dir"
 cd "$remote_app_dir"
+
+if [[ ! -d .git ]]; then
+  echo "Bootstrapping git repository in $remote_app_dir..."
+  backup_dir="${remote_app_dir}.pre-git.$(date +%Y%m%d%H%M%S)"
+  if [[ -n "$(find "$remote_app_dir" -mindepth 1 -maxdepth 1 2>/dev/null | head -n 1)" ]]; then
+    echo "Backing up existing non-git directory to $backup_dir"
+    mv "$remote_app_dir" "$backup_dir"
+    mkdir -p "$remote_app_dir"
+  fi
+  git clone --branch "$branch" --single-branch "${GIT_REMOTE_URL:-https://github.com/chenkewei2025/yhyw.git}" "$remote_app_dir"
+  for env_file in .env .env.local .env.production; do
+    if [[ -f "$backup_dir/$env_file" && ! -f "$remote_app_dir/$env_file" ]]; then
+      cp "$backup_dir/$env_file" "$remote_app_dir/$env_file"
+    fi
+  done
+  cd "$remote_app_dir"
+fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Error: repository has local changes:" >&2
@@ -82,6 +97,9 @@ else
 fi
 git reset --hard "origin/$branch"
 
+echo "Fixing app directory permissions inside $container:$container_app_dir..."
+docker exec -u root "$container" sh -lc "mkdir -p \"$container_app_dir\" && chown -R \"$app_user\" \"$container_app_dir\""
+
 echo "Installing dependencies inside $container:$container_app_dir..."
 docker exec "$container" sh -lc "cd \"$container_app_dir\" && $install_cmd"
 
@@ -92,7 +110,7 @@ fi
 
 echo "Restarting service..."
 cd "$compose_dir"
-$restart_cmd
+bash -lc "$restart_cmd"
 
 echo "Checking health: $health_url"
 for i in $(seq 1 20); do

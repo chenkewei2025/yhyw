@@ -23,6 +23,7 @@ Environment overrides:
   COMPOSE_DIR=/home/ubuntu
   SERVICE=nodejs
   CONTAINER=nodejs
+  APP_USER=node:node
   HEALTH_URL=https://yh.ccyinghe.com/health
   SSH_OPTS="-i ~/.ssh/model-card-deploy"
   YES=1
@@ -49,6 +50,7 @@ container_app_dir="${CONTAINER_APP_DIR:-/usr/src/app/model-card-portal}"
 compose_dir="${COMPOSE_DIR:-/home/ubuntu}"
 service="${SERVICE:-nodejs}"
 container="${CONTAINER:-$service}"
+app_user="${APP_USER:-node:node}"
 health_url="${HEALTH_URL:-https://yh.ccyinghe.com/health}"
 ssh_opts="${SSH_OPTS:-}"
 install_cmd="${INSTALL_CMD:-npm install --omit=dev}"
@@ -59,12 +61,14 @@ if [[ -z "$branch" ]]; then
   exit 1
 fi
 
-if [[ -n "$(git status --porcelain)" ]]; then
+if [[ -n "$(git status --porcelain)" && "${SKIP_PUSH:-}" != "1" ]]; then
   echo "Local worktree has uncommitted changes:" >&2
   git status --short >&2
   echo >&2
   echo "Commit or stash changes before publishing to GitHub." >&2
   exit 1
+elif [[ -n "$(git status --porcelain)" ]]; then
+  echo "Local worktree has uncommitted changes; continuing because SKIP_PUSH=1." >&2
 fi
 
 current_branch="$(git branch --show-current)"
@@ -118,17 +122,33 @@ remote_app_dir="$remote_app_dir"
 container_app_dir="$container_app_dir"
 compose_dir="$compose_dir"
 container="$container"
+app_user="$app_user"
 health_url="$health_url"
 install_cmd="$install_cmd"
 restart_cmd="$restart_cmd"
 expected_head="$local_head"
+git_remote_url="$(git config --get remote.origin.url)"
 
-if [ ! -d "\$remote_app_dir/.git" ]; then
-  echo "Error: \$remote_app_dir is not a git repository." >&2
-  exit 1
-fi
-
+mkdir -p "\$remote_app_dir"
 cd "\$remote_app_dir"
+
+if [ ! -d .git ]; then
+  echo "Bootstrapping git repository in \$remote_app_dir..."
+  parent_dir="\$(dirname "\$remote_app_dir")"
+  backup_dir="\${remote_app_dir}.pre-git.\$(date +%Y%m%d%H%M%S)"
+  if [ -n "\$(find "\$remote_app_dir" -mindepth 1 -maxdepth 1 2>/dev/null | head -n 1)" ]; then
+    echo "Backing up existing non-git directory to \$backup_dir"
+    mv "\$remote_app_dir" "\$backup_dir"
+    mkdir -p "\$remote_app_dir"
+  fi
+  git clone --branch "\$branch" --single-branch "\$git_remote_url" "\$remote_app_dir"
+  for env_file in .env .env.local .env.production; do
+    if [ -f "\$backup_dir/\$env_file" ] && [ ! -f "\$remote_app_dir/\$env_file" ]; then
+      cp "\$backup_dir/\$env_file" "\$remote_app_dir/\$env_file"
+    fi
+  done
+  cd "\$remote_app_dir"
+fi
 
 if [ -n "\$(git status --porcelain)" ]; then
   echo "Error: remote repository has local changes:" >&2
@@ -168,6 +188,9 @@ if [ "\$actual_head" != "\$expected_head" ]; then
   exit 1
 fi
 
+echo "Fixing app directory permissions inside container..."
+docker exec -u root "\$container" sh -lc "mkdir -p \"\$container_app_dir\" && chown -R \"\$app_user\" \"\$container_app_dir\""
+
 echo "Installing dependencies inside container..."
 docker exec "\$container" sh -lc "cd \"\$container_app_dir\" && \$install_cmd"
 
@@ -178,7 +201,7 @@ fi
 
 echo "Restarting nodejs service..."
 cd "\$compose_dir"
-\$restart_cmd
+bash -lc "\$restart_cmd"
 
 echo "Checking health..."
 for i in \$(seq 1 20); do
