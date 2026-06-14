@@ -1,105 +1,205 @@
 #!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage:
-  scripts/deploy-nodejs.sh [ubuntu@SERVER_HOST]
+  scripts/deploy-nodejs.sh [ubuntu@SERVER_HOST] [branch]
+
+Default flow:
+  1. Check local git worktree.
+  2. Push current branch to GitHub.
+  3. SSH to the Ubuntu host.
+  4. Pull GitHub code into the Docker volume source path.
+  5. Run npm install inside the nodejs container app path.
+  6. Restart the 3051 site process/container and health-check it.
 
 Environment overrides:
-  REMOTE_DIR=/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal
-  APP_CONTAINER_DIR=/usr/src/app/model-card-portal
+  REMOTE=ubuntu@124.221.88.94
+  BRANCH=main
+  REMOTE_APP_DIR=/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal
+  CONTAINER_APP_DIR=/usr/src/app/model-card-portal
   COMPOSE_DIR=/home/ubuntu
   SERVICE=nodejs
+  CONTAINER=nodejs
   HEALTH_URL=https://yh.ccyinghe.com/health
   SSH_OPTS="-i ~/.ssh/model-card-deploy"
-  BUILD=0
-  NO_CACHE=1
   YES=1
+  SKIP_PUSH=1
+  INSTALL_CMD="npm install --omit=dev"
+  RESTART_CMD="docker compose restart nodejs"
 
 Examples:
   scripts/deploy-nodejs.sh
-  scripts/deploy-nodejs.sh ubuntu@1.2.3.4
-  YES=1 scripts/deploy-nodejs.sh ubuntu@124.221.88.94
-EOF
+  YES=1 scripts/deploy-nodejs.sh ubuntu@124.221.88.94 main
+  SSH_OPTS="-i ~/.ssh/model-card-deploy" YES=1 npm run deploy
+USAGE
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -gt 1 ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -gt 2 ]]; then
   usage
-  exit 1
+  exit 0
 fi
 
 remote="${1:-${REMOTE:-ubuntu@124.221.88.94}}"
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-project_dir="$(cd "$script_dir/.." && pwd)"
-remote_dir="${REMOTE_DIR:-/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal}"
-app_container_dir="${APP_CONTAINER_DIR:-/usr/src/app/model-card-portal}"
+branch="${2:-${BRANCH:-$(git branch --show-current)}}"
+remote_app_dir="${REMOTE_APP_DIR:-/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal}"
+container_app_dir="${CONTAINER_APP_DIR:-/usr/src/app/model-card-portal}"
 compose_dir="${COMPOSE_DIR:-/home/ubuntu}"
 service="${SERVICE:-nodejs}"
+container="${CONTAINER:-$service}"
 health_url="${HEALTH_URL:-https://yh.ccyinghe.com/health}"
 ssh_opts="${SSH_OPTS:-}"
-rsync_ssh=()
-if [[ -n "$ssh_opts" ]]; then
-  rsync_ssh=(-e "ssh $ssh_opts")
+install_cmd="${INSTALL_CMD:-npm install --omit=dev}"
+restart_cmd="${RESTART_CMD:-docker compose restart $service}"
+
+if [[ -z "$branch" ]]; then
+  echo "Error: cannot determine git branch. Pass it explicitly: scripts/deploy-nodejs.sh $remote main" >&2
+  exit 1
 fi
 
-rsync_excludes=(
-  --exclude node_modules
-  --exclude .git
-  --exclude .env
-  --exclude ".env.*"
-  --exclude .DS_Store
-  --exclude npm-debug.log
-)
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Local worktree has uncommitted changes:" >&2
+  git status --short >&2
+  echo >&2
+  echo "Commit or stash changes before publishing to GitHub." >&2
+  exit 1
+fi
 
-echo "Local:  $project_dir"
-echo "Remote: $remote:$remote_dir"
-echo "App in container: $app_container_dir"
+current_branch="$(git branch --show-current)"
+if [[ "$current_branch" != "$branch" ]]; then
+  echo "Error: current branch is '$current_branch', requested deploy branch is '$branch'." >&2
+  exit 1
+fi
+
+local_head="$(git rev-parse HEAD)"
+upstream="origin/$branch"
+
+echo "Deploy branch:      $branch"
+echo "Local commit:       $local_head"
+echo "Remote host:        $remote"
+echo "Host app path:      $remote_app_dir"
+echo "Container app path: $container_app_dir"
+echo "Health URL:         $health_url"
 echo
 
-echo "Previewing files to sync..."
-if [[ -n "$ssh_opts" ]]; then
-  rsync --rsync-path="sudo rsync" -avzn "${rsync_ssh[@]}" "${rsync_excludes[@]}" "$project_dir/" "$remote:$remote_dir/"
+if [[ "${SKIP_PUSH:-}" != "1" ]]; then
+  echo "Fetching origin..."
+  git fetch origin "$branch"
+  if git rev-parse --verify "$upstream" >/dev/null 2>&1; then
+    if ! git merge-base --is-ancestor "$upstream" HEAD; then
+      echo "Error: local $branch is behind or diverged from $upstream. Pull/rebase first." >&2
+      exit 1
+    fi
+  fi
+
+  echo "Pushing local code to GitHub..."
+  git push origin "$branch"
 else
-  rsync --rsync-path="sudo rsync" -avzn "${rsync_excludes[@]}" "$project_dir/" "$remote:$remote_dir/"
+  echo "Skipping git push because SKIP_PUSH=1."
 fi
 
 if [[ "${YES:-}" != "1" ]]; then
   echo
-  read -r -p "Continue with upload and restart? [y/N] " answer
+  read -r -p "Continue remote pull and nodejs restart? [y/N] " answer
   case "$answer" in
     y|Y|yes|YES) ;;
     *) echo "Canceled."; exit 0 ;;
   esac
 fi
 
-echo
-echo "Uploading files..."
-if [[ -n "$ssh_opts" ]]; then
-  rsync --rsync-path="sudo rsync" -avz "${rsync_ssh[@]}" "${rsync_excludes[@]}" "$project_dir/" "$remote:$remote_dir/"
-else
-  rsync --rsync-path="sudo rsync" -avz "${rsync_excludes[@]}" "$project_dir/" "$remote:$remote_dir/"
+remote_cmd=$(cat <<REMOTE_SCRIPT
+set -euo pipefail
+IFS=\$'\\n\\t'
+
+branch="$branch"
+remote_app_dir="$remote_app_dir"
+container_app_dir="$container_app_dir"
+compose_dir="$compose_dir"
+container="$container"
+health_url="$health_url"
+install_cmd="$install_cmd"
+restart_cmd="$restart_cmd"
+expected_head="$local_head"
+
+if [ ! -d "\$remote_app_dir/.git" ]; then
+  echo "Error: \$remote_app_dir is not a git repository." >&2
+  exit 1
 fi
 
-remote_cmd=$'set -e\n'
-remote_cmd+="cd \"$compose_dir\""$'\n'
+cd "\$remote_app_dir"
 
-if [[ "${BUILD:-0}" == "1" ]]; then
-  build_cmd="docker compose build"
-  if [[ "${NO_CACHE:-}" == "1" ]]; then
-    build_cmd="$build_cmd --no-cache"
+if [ -n "\$(git status --porcelain)" ]; then
+  echo "Error: remote repository has local changes:" >&2
+  git status --short >&2
+  exit 1
+fi
+
+previous_head="\$(git rev-parse HEAD)"
+backup_ref="refs/heads/deploy-backup-\$previous_head"
+git update-ref "\$backup_ref" "\$previous_head"
+
+rollback() {
+  status=\$?
+  if [ "\$status" -ne 0 ]; then
+    echo "Deployment failed. Rolling back source tree to \$previous_head..." >&2
+    cd "\$remote_app_dir"
+    git reset --hard "\$previous_head" || true
+    echo "Rollback ref kept: \${backup_ref##refs/heads/}" >&2
+  else
+    git update-ref -d "\$backup_ref" >/dev/null 2>&1 || true
   fi
-  remote_cmd+="$build_cmd \"$service\""$'\n'
+  exit "\$status"
+}
+trap rollback EXIT
+
+echo "Pulling GitHub code on host..."
+git fetch origin "\$branch" --prune
+if git rev-parse --verify "\$branch" >/dev/null 2>&1; then
+  git checkout "\$branch"
+else
+  git checkout -B "\$branch" "origin/\$branch"
 fi
-remote_cmd+="docker compose up -d --no-build \"$service\""$'\n'
-remote_cmd+="docker compose restart \"$service\""$'\n'
-remote_cmd+="docker compose exec -T \"$service\" sh -lc 'grep -n \"github-api-admin-20260613\" \"$app_container_dir/public/admin.html\"; grep -n \"github-api-admin-20260613\" \"$app_container_dir/server/index.js\"; grep -n \"githubStatus\" \"$app_container_dir/public/admin.html\"'"$'\n'
-remote_cmd+="for i in \$(seq 1 15); do curl -fsS \"$health_url\" && break; if [ \"\$i\" -eq 15 ]; then exit 1; fi; sleep 2; done"$'\n'
-remote_cmd+="echo"$'\n'
+git reset --hard "origin/\$branch"
+actual_head="\$(git rev-parse HEAD)"
+if [ "\$actual_head" != "\$expected_head" ]; then
+  echo "Error: remote pulled \$actual_head, expected \$expected_head." >&2
+  exit 1
+fi
+
+echo "Installing dependencies inside container..."
+docker exec "\$container" sh -lc "cd \"\$container_app_dir\" && \$install_cmd"
+
+if docker exec "\$container" sh -lc "cd \"\$container_app_dir\" && npm run | grep -qE '(^| )build($| )'"; then
+  echo "Running build inside container..."
+  docker exec "\$container" sh -lc "cd \"\$container_app_dir\" && npm run build"
+fi
+
+echo "Restarting nodejs service..."
+cd "\$compose_dir"
+\$restart_cmd
+
+echo "Checking health..."
+for i in \$(seq 1 20); do
+  if curl -fsS "\$health_url"; then
+    echo
+    echo "Remote deployment finished successfully."
+    exit 0
+  fi
+  sleep 2
+  if [ "\$i" -eq 20 ]; then
+    echo "Health check failed: \$health_url" >&2
+    exit 1
+  fi
+done
+REMOTE_SCRIPT
+)
 
 echo
-echo "Building and restarting remote service..."
+echo "Running remote deployment..."
+# shellcheck disable=SC2086
 echo "$remote_cmd" | ssh $ssh_opts "$remote" sudo bash
 
 echo
-echo "Deploy complete."
+echo "Deploy complete: $branch@$local_head"

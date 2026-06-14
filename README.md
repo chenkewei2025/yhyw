@@ -134,24 +134,50 @@ GitHub API 通过后端代理调用，token 只放在服务端环境变量里，
 
 ## 发布命令
 
+标准发布流程：本地代码提交后先推送 GitHub，再登录宿主机 `ubuntu@124.221.88.94`，由宿主机拉取 GitHub 最新代码并更新 `nodejs` 容器中 `3051` 端口对应的网站。
+
+路径约定：
+
+- nodejs 容器根路径：`/usr/src/app`
+- 宿主机 Docker volume 根路径：`/var/lib/docker/volumes/ubuntu_nodejs_data/_data`
+- 3051 网站容器源码：`/usr/src/app/model-card-portal`
+- 3051 网站宿主机源码：`/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal`
+
+本地一键发布：
+
+```bash
+git add .
+git commit -m "更新发布内容"
+YES=1 npm run deploy
+```
+
+等价命令：
+
+```bash
+YES=1 ./deploy.sh ubuntu@124.221.88.94 main
+```
+
+发布脚本会：
+
+- 检查本地 Git 工作区必须干净
+- `git push origin main` 更新 GitHub
+- SSH 到 `ubuntu@124.221.88.94`
+- 在宿主机路径 `/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal` 拉取 `origin/main`
+- 在容器路径 `/usr/src/app/model-card-portal` 执行 `npm install --omit=dev`
+- 如果存在 `build` 脚本则执行 `npm run build`
+- 重启 `nodejs` 服务并检查 `https://yh.ccyinghe.com/health`
+
+如果已经在宿主机上，只执行拉取和重启：
+
+```bash
+sudo bash /var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal/scripts/deploy-volume-host.sh main
+```
+
 生成并发布 n8n 工作流：
 
 ```bash
 npm run build:n8n
 npm run publish:n8n
-```
-
-启动服务：
-
-```bash
-pm2 start ecosystem.config.cjs
-```
-
-Docker 构建：
-
-```bash
-docker compose build nodejs
-docker compose up -d nodejs
 ```
 
 ## 重要部署注意事项
