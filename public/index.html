@@ -63,8 +63,8 @@
 
         <label>
           <span>最佳视频</span>
-          <input type="file" name="bestVideo" accept="video/*" required>
-          <small>限制 30M</small>
+          <input type="file" name="bestVideo" accept=".mp4,.m4v,video/mp4,video/x-m4v" required>
+          <small>仅支持 MP4，限制 30M</small>
         </label>
 
         <label>
@@ -80,8 +80,8 @@
 
         <label>
           <span>剩余视频</span>
-          <input type="file" name="otherVideos" accept="video/*">
-          <small>最多 1 个，限制 30M</small>
+          <input type="file" name="otherVideos" accept=".mp4,.m4v,video/mp4,video/x-m4v">
+          <small>最多 1 个，仅支持 MP4，限制 30M</small>
         </label>
 
         <div class="actions wide">
@@ -125,6 +125,6 @@
     </div>
   </dialog>
 
-  <script src="/entry.js?v=submit-lock-20260610"></script>
+  <script src="/entry.js?v=mp4-video-only-20260615"></script>
 </body>
 </html>

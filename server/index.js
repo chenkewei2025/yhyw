@@ -409,9 +409,12 @@ function normalizePhone(value) {
 function isAllowedVideo(file) {
   const buffer = file?.buffer;
   const mime = String(file?.mimetype || '').toLowerCase();
-  if (mime === 'video/webm') return startsWithBytes(buffer, [0x1a, 0x45, 0xdf, 0xa3]);
-  if (mime === 'video/mp4' || mime === 'video/quicktime') return asciiAt(buffer, 4, 4) === 'ftyp' || asciiAt(buffer, 4, 4) === 'moov';
-  return false;
+  const extension = path.extname(file?.originalname || '').toLowerCase();
+  if (!['video/mp4', 'video/x-m4v', 'application/mp4'].includes(mime) && !['.mp4', '.m4v'].includes(extension)) return false;
+  if (mime === 'video/quicktime' || extension === '.mov') return false;
+  if (asciiAt(buffer, 4, 4) !== 'ftyp') return false;
+  const brand = asciiAt(buffer, 8, 4).toLowerCase();
+  return !brand.includes('qt');
 }
 
 function validateUploadFile(file, label, kind) {
@@ -421,7 +424,7 @@ function validateUploadFile(file, label, kind) {
     return;
   }
   if (kind !== 'video') return;
-  if (!isAllowedVideo(file)) throw new Error(`${label}文件类型不支持，请上传有效的视频文件`);
+  if (!isAllowedVideo(file)) throw new Error(`${label}文件类型不支持，请上传 MP4 视频。iPhone 请先在相册或剪映中导出为 MP4 后再上传`);
 }
 
 function extractName(introText) {

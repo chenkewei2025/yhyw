@@ -30,6 +30,9 @@ let submissionLocked = false;
 const allowedImageExtensions = ['.jpg', '.jpeg', '.bmp', '.gif', '.png'];
 const allowedImageTypes = ['image/jpeg', 'image/pjpeg', 'image/bmp', 'image/x-ms-bmp', 'image/gif', 'image/png', 'image/x-png'];
 const allowedImageFormatText = '.jpg、.jpeg、.bmp、.gif 或 .png';
+const allowedVideoExtensions = ['.mp4', '.m4v'];
+const allowedVideoTypes = ['video/mp4', 'video/x-m4v'];
+const allowedVideoFormatText = '.mp4 视频';
 
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 11);
@@ -41,6 +44,14 @@ function isAllowedImageFile(file) {
   const type = String(file.type || '').toLowerCase();
   return allowedImageTypes.includes(type)
     || allowedImageExtensions.some((extension) => name.endsWith(extension));
+}
+
+function isAllowedVideoFile(file) {
+  if (!file) return false;
+  const name = file.name.toLowerCase();
+  const type = String(file.type || '').toLowerCase();
+  return allowedVideoTypes.includes(type)
+    || allowedVideoExtensions.some((extension) => name.endsWith(extension));
 }
 
 function escapeHtml(value) {
@@ -192,6 +203,7 @@ function validateFiles(formData) {
   if (!bestVideo) throw new Error('最佳视频必填');
   if (phone.length !== 11) throw new Error('联系电话请输入 11 位数字');
   if (!isAllowedImageFile(bestPhoto)) throw new Error(`最佳照片文件类型不支持，请上传 ${allowedImageFormatText} 图片`);
+  if (!isAllowedVideoFile(bestVideo)) throw new Error(`最佳视频文件类型不支持，请上传 ${allowedVideoFormatText}`);
   if (bestPhoto && bestPhoto.size > 6 * mb) throw new Error('最佳照片不能超过 6M');
   if (bestVideo && bestVideo.size > 30 * mb) throw new Error('最佳视频不能超过 30M');
   if (otherPhotos.length > 2) throw new Error('剩余照片最多 2 张');
@@ -201,6 +213,7 @@ function validateFiles(formData) {
     if (file.size > 6 * mb) throw new Error(`剩余照片${index + 1}不能超过 6M`);
   });
   otherVideos.forEach((file, index) => {
+    if (!isAllowedVideoFile(file)) throw new Error(`剩余视频${index + 1}文件类型不支持，请上传 ${allowedVideoFormatText}`);
     if (file.size > 30 * mb) throw new Error(`剩余视频${index + 1}不能超过 30M`);
   });
   formData.delete('otherPhotos');
