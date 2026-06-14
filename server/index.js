@@ -36,6 +36,7 @@ const mergedPptxJobs = new Map();
 const submissionQueue = [];
 let activeSubmissionJobs = 0;
 const submissionWorkerConcurrency = Math.max(1, Number(process.env.SUBMISSION_WORKER_CONCURRENCY || 2) || 2);
+const submissionN8nMaxAttempts = Math.max(1, Number(process.env.SUBMISSION_N8N_MAX_ATTEMPTS || 3) || 3);
 const configuredSessionSecret = process.env.SESSION_SECRET || '';
 const weakSessionSecret = !configuredSessionSecret
   || configuredSessionSecret === 'change-this-to-a-long-random-secret'
@@ -978,6 +979,11 @@ function publicPptxFailureMessage(error) {
   return message;
 }
 
+function retryableN8nError(error) {
+  const message = String(error || '').trim();
+  return !message || /there was a problem executing the workflow/i.test(message);
+}
+
 function githubHeaders() {
   const headers = {
     Accept: 'application/vnd.github+json',
@@ -1094,7 +1100,7 @@ async function processSubmissionJob(submissionId) {
     return;
   }
 
-  try {
+  async function runN8nOnce() {
     const n8nRawResult = await fetchJson(process.env.N8N_WEBHOOK_URL || 'https://n8n.ccyinghe.com/webhook/model-card', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1111,6 +1117,33 @@ async function processSubmissionJob(submissionId) {
     const safeDiskPath = safePptxDiskPath(pptxDiskPath);
     const hasPptxResult = Boolean(pptxBase64 || (safeDiskPath && fs.existsSync(safeDiskPath)));
     const doneStatus = n8nResult.success === false || !hasPptxResult ? 'failed' : 'done';
+    return {
+      n8nResult,
+      workflowError,
+      pptxFileName,
+      pptxDiskPath,
+      pptxBase64,
+      doneStatus,
+    };
+  }
+
+  try {
+    let attemptResult = null;
+    let lastError = null;
+    for (let attempt = 1; attempt <= submissionN8nMaxAttempts; attempt += 1) {
+      try {
+        attemptResult = await runN8nOnce();
+        const shouldRetry = attemptResult.doneStatus === 'failed'
+          && retryableN8nError(attemptResult.workflowError || attemptResult.n8nResult?.error || attemptResult.n8nResult?.message);
+        if (!shouldRetry || attempt === submissionN8nMaxAttempts) break;
+      } catch (error) {
+        lastError = error;
+        if (!retryableN8nError(error.message) || attempt === submissionN8nMaxAttempts) throw error;
+      }
+      await sleep(1500 * attempt);
+    }
+
+    if (!attemptResult) throw lastError || new Error('n8n 生成失败');
 
     await pool.query(
       `UPDATE model_card_submissions
@@ -1124,14 +1157,14 @@ async function processSubmissionJob(submissionId) {
        WHERE id = $1`,
       [
         submissionId,
-        doneStatus,
-        doneStatus === 'done' ? pptxFileName : null,
-        doneStatus === 'done' ? pptxDiskPath : null,
-        doneStatus === 'done' ? pptxBase64 : null,
-        doneStatus === 'done' ? `${siteUrl}/api/submissions/download/${row.download_token}` : null,
-        workflowError || doneStatus === 'failed'
-          ? { ...n8nResult, pptx_base64: undefined, error: workflowError || 'PPTX 未正确生成' }
-          : { ...n8nResult, pptx_base64: undefined },
+        attemptResult.doneStatus,
+        attemptResult.doneStatus === 'done' ? attemptResult.pptxFileName : null,
+        attemptResult.doneStatus === 'done' ? attemptResult.pptxDiskPath : null,
+        attemptResult.doneStatus === 'done' ? attemptResult.pptxBase64 : null,
+        attemptResult.doneStatus === 'done' ? `${siteUrl}/api/submissions/download/${row.download_token}` : null,
+        attemptResult.workflowError || attemptResult.doneStatus === 'failed'
+          ? { ...attemptResult.n8nResult, pptx_base64: undefined, error: attemptResult.workflowError || 'PPTX 未正确生成' }
+          : { ...attemptResult.n8nResult, pptx_base64: undefined },
       ]
     );
   } catch (error) {
