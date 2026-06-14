@@ -134,7 +134,7 @@ GitHub API 通过后端代理调用，token 只放在服务端环境变量里，
 
 ## 发布命令
 
-标准发布流程：本地代码提交后先推送 GitHub，再登录宿主机 `ubuntu@124.221.88.94`，由宿主机拉取 GitHub 最新代码并更新 `nodejs` 容器中 `3051` 端口对应的网站。
+标准发布流程：本地代码提交后先推送 GitHub，再通过 SSH 别名 `yhyw-server` 登录宿主机，宿主机拉取 GitHub 最新代码并更新 `nodejs` 容器中 `3051` 端口对应的网站。
 
 路径约定：
 
@@ -154,14 +154,14 @@ YES=1 npm run deploy
 等价命令：
 
 ```bash
-YES=1 ./deploy.sh ubuntu@124.221.88.94 main
+YES=1 ./deploy.sh yhyw-server main
 ```
 
 发布脚本会：
 
 - 检查本地 Git 工作区必须干净
 - `git push origin main` 更新 GitHub
-- SSH 到 `ubuntu@124.221.88.94`
+- SSH 到 `yhyw-server`
 - 在宿主机路径 `/var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal` 拉取 `origin/main`
 - 在容器路径 `/usr/src/app/model-card-portal` 执行 `npm install --omit=dev`
 - 如果存在 `build` 脚本则执行 `npm run build`
@@ -179,6 +179,8 @@ sudo bash /var/lib/docker/volumes/ubuntu_nodejs_data/_data/model-card-portal/scr
 npm run build:n8n
 npm run publish:n8n
 ```
+
+如果以后服务器 IP 变化，只需要修改本机 `~/.ssh/config` 中 `yhyw-server` 的 `HostName`，发布命令不用变。
 
 ## 重要部署注意事项
 

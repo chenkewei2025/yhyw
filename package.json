@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node index.js",
     "start": "node index.js",
-    "deploy": "scripts/deploy-nodejs.sh",
+    "deploy": "scripts/deploy-nodejs.sh yhyw-server main",
     "build:n8n": "node scripts/build-n8n-workflow.js && node scripts/build-n8n-project-dir-workflow.js",
     "publish:n8n": "node scripts/publish-n8n-workflows.js"
   },
