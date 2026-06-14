@@ -73,6 +73,7 @@ const prompt = `=分析{{ ($json.body && $json.body.data) ? $json.body.data : $j
 
 const materialWriterCode = `const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const webhook = $('前端录入 Webhook').first().json;
 const item = webhook.body || webhook;
@@ -128,13 +129,48 @@ function writeBase64(fileInfo, suffix, defaultExt) {
   push(filePath, fileName);
 }
 
+function writeVideo(fileInfo, suffix) {
+  if (!fileInfo || !fileInfo.data) return;
+  const ext = (path.extname(fileInfo.name || '') || '.mp4').toLowerCase();
+  const rawName = modelName + '_' + suffix + ext;
+  const rawPath = path.join(tempDir, rawName);
+  fs.writeFileSync(rawPath, Buffer.from(fileInfo.data, 'base64'));
+
+  if (ext === '.mp4') {
+    push(rawPath, rawName);
+    return;
+  }
+
+  const mp4Name = modelName + '_' + suffix + '.mp4';
+  const mp4Path = path.join(tempDir, mp4Name);
+  const converted = spawnSync('ffmpeg', [
+    '-y',
+    '-i', rawPath,
+    '-map', '0:v:0',
+    '-map', '0:a?',
+    '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
+    '-profile:v', 'baseline',
+    '-level', '3.1',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-movflags', '+faststart',
+    mp4Path,
+  ], { encoding: 'utf8' });
+
+  if (converted.status !== 0 || !fs.existsSync(mp4Path) || fs.statSync(mp4Path).size === 0) {
+    throw new Error('视频转 MP4 失败：' + (converted.stderr || converted.stdout || 'ffmpeg 执行失败'));
+  }
+  push(mp4Path, mp4Name);
+}
+
 const txtName = modelName + '.txt';
 const txtPath = path.join(tempDir, txtName);
 fs.writeFileSync(txtPath, processedText, 'utf8');
 push(txtPath, txtName);
 
 writeBase64(item.page1 && item.page1.bestPhoto, 'best_photo', '.jpg');
-writeBase64(item.page1 && item.page1.bestVideo, 'best_video', '.mp4');
+writeVideo(item.page1 && item.page1.bestVideo, 'best_video');
 
 const photos = (item.otherPages && item.otherPages.photos) || [];
 for (let i = 0; i < Math.min(photos.length, 2); i++) {
@@ -143,7 +179,7 @@ for (let i = 0; i < Math.min(photos.length, 2); i++) {
 
 const videos = (item.otherPages && item.otherPages.videos) || [];
 for (let i = 0; i < Math.min(videos.length, 1); i++) {
-  writeBase64(videos[i], 'video_' + (i + 2), '.mp4');
+  writeVideo(videos[i], 'video_' + (i + 2));
 }
 
 return results;`;
