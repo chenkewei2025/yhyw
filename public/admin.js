@@ -533,13 +533,24 @@ roleForm.addEventListener('submit', async (event) => {
 });
 
 roleList.addEventListener('click', async (event) => {
-  const id = event.target.dataset.deleteRole;
-  if (id && confirm('确认删除该职别？')) {
-    await api(`/api/admin/roles/${id}`, { method: 'DELETE' });
+  const button = event.target.closest('button[data-delete-role]');
+  const id = button?.dataset.deleteRole;
+  if (!id) return;
+  if (!confirm('确认删除该职别？会同步删除该项目该职别已生成的 PPTX 文件，并清空报名记录中的 PPTX 下载信息。')) return;
+
+  try {
+    button.disabled = true;
+    const data = await api(`/api/admin/roles/${id}`, { method: 'DELETE' });
     await loadProjects();
     await loadProjectOptions();
     await loadProjectRoleSummary();
     await loadSubmissions();
+    const cleanup = data.pptxCleanup || {};
+    alert(`职别已删除，已清理 ${cleanup.deletedFileCount || 0} 个 PPTX 文件。`);
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    button.disabled = false;
   }
 });
 

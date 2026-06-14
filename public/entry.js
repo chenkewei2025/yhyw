@@ -30,9 +30,9 @@ let submissionLocked = false;
 const allowedImageExtensions = ['.jpg', '.jpeg', '.bmp', '.gif', '.png'];
 const allowedImageTypes = ['image/jpeg', 'image/pjpeg', 'image/bmp', 'image/x-ms-bmp', 'image/gif', 'image/png', 'image/x-png'];
 const allowedImageFormatText = '.jpg、.jpeg、.bmp、.gif 或 .png';
-const allowedVideoExtensions = ['.mp4', '.m4v'];
-const allowedVideoTypes = ['video/mp4', 'video/x-m4v'];
-const allowedVideoFormatText = '.mp4 视频';
+const allowedVideoExtensions = ['.mp4', '.m4v', '.mov'];
+const allowedVideoTypes = ['video/mp4', 'video/x-m4v', 'video/quicktime'];
+const allowedVideoFormatText = '.mp4、.m4v 或 .mov 视频';
 
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 11);
@@ -259,7 +259,9 @@ async function pollSubmissionStatus(statusUrl, formData) {
 
     if (data.status === 'failed') {
       stopSubmissionStatusPolling();
-      throw new Error(data.error || 'PPTX 生成失败');
+      setSubmissionLocked(false);
+      setStatus(`报名失败：${data.error || 'PPTX 生成失败，请联系管理员处理'}`, true);
+      return;
     }
 
     setStatus(data.status === 'queued'
@@ -269,7 +271,7 @@ async function pollSubmissionStatus(statusUrl, formData) {
   } catch (error) {
     stopSubmissionStatusPolling();
     setSubmissionLocked(false);
-    setStatus(error.message, true);
+    setStatus(`报名失败：PPTX 状态查询失败，${error.message}`, true);
   }
 }
 
