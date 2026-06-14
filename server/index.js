@@ -322,7 +322,7 @@ function removePptxFile(filePath) {
   return true;
 }
 
-async function deleteRolePptxFiles(client, role) {
+async function deleteRoleSubmissionsAndPptxFiles(client, role) {
   const { rows } = await client.query(
     `SELECT id, pptx_disk_path, n8n_response
      FROM model_card_submissions
@@ -352,19 +352,14 @@ async function deleteRolePptxFiles(client, role) {
     }
   }
 
-  const cleared = await client.query(
-    `UPDATE model_card_submissions
-     SET pptx_file_name = NULL,
-         pptx_disk_path = NULL,
-         pptx_url = NULL,
-         pptx_base64 = NULL,
-         updated_at = NOW()
+  const deletedSubmissions = await client.query(
+    `DELETE FROM model_card_submissions
      WHERE project_id = $1 AND role_id = $2`,
     [role.project_id, role.id]
   );
 
   return {
-    submissionCount: cleared.rowCount,
+    submissionCount: deletedSubmissions.rowCount,
     deletedFileCount: deletedFiles.length,
     diskPaths,
   };
@@ -2033,7 +2028,7 @@ app.delete('/api/admin/roles/:id', requireAdmin, async (req, res, next) => {
       res.status(403).json({ error: '只能维护自己创建项目的职别' });
       return;
     }
-    const pptxCleanup = await deleteRolePptxFiles(client, role.rows[0]);
+    const pptxCleanup = await deleteRoleSubmissionsAndPptxFiles(client, role.rows[0]);
     await client.query('DELETE FROM model_card_roles WHERE id = $1', [req.params.id]);
     await client.query('COMMIT');
     const fileCleanup = pptxCleanup.diskPaths.length

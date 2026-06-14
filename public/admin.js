@@ -536,7 +536,7 @@ roleList.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-delete-role]');
   const id = button?.dataset.deleteRole;
   if (!id) return;
-  if (!confirm('确认删除该职别？会同步删除该项目该职别已生成的 PPTX 文件，并清空报名记录中的 PPTX 下载信息。')) return;
+  if (!confirm('确认删除该职别？会同步删除该项目该职别的报名记录和已生成的 PPTX 文件。')) return;
 
   try {
     button.disabled = true;
@@ -546,7 +546,7 @@ roleList.addEventListener('click', async (event) => {
     await loadProjectRoleSummary();
     await loadSubmissions();
     const cleanup = data.pptxCleanup || {};
-    alert(`职别已删除，已清理 ${cleanup.deletedFileCount || 0} 个 PPTX 文件。`);
+    alert(`职别已删除，已删除 ${cleanup.submissionCount || 0} 条报名记录，已清理 ${cleanup.deletedFileCount || 0} 个 PPTX 文件。`);
   } catch (error) {
     alert(error.message);
   } finally {
