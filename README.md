@@ -60,7 +60,7 @@ npm run dev
 - `GITHUB_API_VERSION=2026-03-10`
 - `GITHUB_TOKEN=你的 GitHub Personal Access Token`
 - `GITHUB_OWNER=默认查询的 GitHub 用户名或组织名，可留空`
-- `SUBMISSION_WORKER_CONCURRENCY=1`，后台 PPTX 生成队列并发数；默认串行，避免 n8n 生成 PPTX 时并发抢占临时文件
+- `SUBMISSION_WORKER_CONCURRENCY=2`，后台 PPTX 生成队列并发数
 - `ADMIN_PASSWORD=后台强密码，不要使用默认弱口令`
 
 ## GitHub API

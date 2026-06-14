@@ -35,7 +35,7 @@ const appVersion = 'admin-no-github-panel-20260614';
 const mergedPptxJobs = new Map();
 const submissionQueue = [];
 let activeSubmissionJobs = 0;
-const submissionWorkerConcurrency = Math.max(1, Number(process.env.SUBMISSION_WORKER_CONCURRENCY || 1) || 1);
+const submissionWorkerConcurrency = Math.max(1, Number(process.env.SUBMISSION_WORKER_CONCURRENCY || 2) || 2);
 const configuredSessionSecret = process.env.SESSION_SECRET || '';
 const weakSessionSecret = !configuredSessionSecret
   || configuredSessionSecret === 'change-this-to-a-long-random-secret'
