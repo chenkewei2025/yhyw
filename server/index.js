@@ -901,7 +901,7 @@ function dedupedSubmissionsSql(selectColumns, where, orderBy = 'submitted_at DES
     FROM (
       SELECT *,
              ROW_NUMBER() OVER (
-               PARTITION BY person_name, phone, role_name
+               PARTITION BY phone, person_name, role_name, project_name
                ORDER BY submitted_at DESC, id DESC
              ) AS duplicate_rank
       FROM model_card_submissions
@@ -1840,7 +1840,7 @@ app.get('/api/admin/project-role-summary', requireAdmin, async (_req, res, next)
                   person_name,
                   phone,
                   ROW_NUMBER() OVER (
-                    PARTITION BY person_name, phone, role_name
+                    PARTITION BY phone, person_name, role_name, project_name
                     ORDER BY submitted_at DESC, id DESC
                   ) AS duplicate_rank
            FROM model_card_submissions
