@@ -254,6 +254,7 @@ const tempDir = summary.appended_dirPath && summary.appended_dirPath[0];
 const finalDir = summary.appended_finalDir && summary.appended_finalDir[0];
 const submissionId = summary.appended_submissionId && summary.appended_submissionId[0];
 const modelName = $('准备PPTX输入').item.json.modelName;
+const personName = $('准备PPTX输入').item.json.personName;
 const fileName = modelName + '.pptx';
 const base64Field = Object.keys(code).find((key) => key.startsWith('pptx_base64_'));
 
