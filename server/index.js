@@ -911,6 +911,10 @@ function submissionFilters(query) {
   return { params, where };
 }
 
+function generatedPptxSubmissionWhere() {
+  return [`status = 'done'`];
+}
+
 function dedupedSubmissionsSql(selectColumns, where, orderBy = 'submitted_at DESC', outerWhere = []) {
   const dedupedWhere = ['duplicate_rank = 1', ...where, ...outerWhere];
   return `SELECT ${selectColumns}
@@ -1855,6 +1859,7 @@ app.get('/api/admin/project-role-summary', requireAdmin, async (_req, res, next)
                   role_id,
                   person_name,
                   phone,
+                  status,
                   ROW_NUMBER() OVER (
                     PARTITION BY phone, person_name, role_name, project_name
                     ORDER BY submitted_at DESC, id DESC
@@ -1862,6 +1867,7 @@ app.get('/api/admin/project-role-summary', requireAdmin, async (_req, res, next)
            FROM model_card_submissions
          ) ranked_submissions
          WHERE duplicate_rank = 1
+           AND status = 'done'
        ),
        role_submission_counts AS (
          SELECT project_id, role_id, COUNT(*)::int AS submission_count
@@ -2095,7 +2101,9 @@ app.get('/api/admin/submissions', requireAdmin, async (req, res, next) => {
     const { rows } = await pool.query(
       dedupedSubmissionsSql(
         'id, project_name, person_name, role_name, phone, wechat, pptx_url, pptx_disk_path, pptx_file_name, status, submitted_at, download_token, n8n_response',
-        where
+        where,
+        'submitted_at DESC',
+        generatedPptxSubmissionWhere()
       ),
       params
     );
@@ -2124,7 +2132,7 @@ app.post('/api/admin/submissions/merge-pptx', requireAdmin, async (req, res, nex
         'id, project_name, role_name, person_name, pptx_file_name, pptx_base64, submitted_at',
         where,
         'submitted_at ASC, id ASC',
-        [`status = 'done'`, `pptx_base64 IS NOT NULL`]
+        [...generatedPptxSubmissionWhere(), `pptx_base64 IS NOT NULL`]
       ),
       params
     );
@@ -2168,7 +2176,9 @@ app.get('/api/admin/submissions/export', requireAdmin, async (req, res, next) =>
         `project_name AS 项目名称, person_name AS 姓名, role_name AS 职别,
          phone AS 联系电话, wechat AS 微信号, pptx_url AS "PPTX 文件 Url 下载位置",
          submitted_at AS 上传时间`,
-        where
+        where,
+        'submitted_at DESC',
+        generatedPptxSubmissionWhere()
       ),
       params
     );

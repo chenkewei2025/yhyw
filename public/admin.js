@@ -315,7 +315,7 @@ async function loadSubmissions() {
       <td>${escapeHtml(row.wechat || '')}</td>
       <td>${row.pptx_url ? `<a href="${escapeAttr(row.pptx_url)}">${escapeHtml(row.pptx_file_name || '下载')}</a>` : escapeHtml(row.status)}</td>
     </tr>
-  `).join('') || '<tr><td colspan="6">暂无报名记录</td></tr>';
+  `).join('') || '<tr><td colspan="6">暂无已生成 PPTX 的报名记录</td></tr>';
   resetMergedPptx();
 }
 
