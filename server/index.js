@@ -896,7 +896,7 @@ function submissionFilters(query) {
 }
 
 function dedupedSubmissionsSql(selectColumns, where, orderBy = 'submitted_at DESC', outerWhere = []) {
-  const dedupedWhere = ['duplicate_rank = 1', ...outerWhere];
+  const dedupedWhere = ['duplicate_rank = 1', ...where, ...outerWhere];
   return `SELECT ${selectColumns}
     FROM (
       SELECT *,
@@ -905,7 +905,6 @@ function dedupedSubmissionsSql(selectColumns, where, orderBy = 'submitted_at DES
                ORDER BY submitted_at DESC, id DESC
              ) AS duplicate_rank
       FROM model_card_submissions
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ) deduped_submissions
     WHERE ${dedupedWhere.join(' AND ')}
     ORDER BY ${orderBy}`;
@@ -1841,7 +1840,7 @@ app.get('/api/admin/project-role-summary', requireAdmin, async (_req, res, next)
                   person_name,
                   phone,
                   ROW_NUMBER() OVER (
-                    PARTITION BY project_id, role_id, person_name, phone
+                    PARTITION BY person_name, phone, role_name
                     ORDER BY submitted_at DESC, id DESC
                   ) AS duplicate_rank
            FROM model_card_submissions
