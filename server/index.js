@@ -218,6 +218,22 @@ function safeFileName(value) {
   return cleanName(value).replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_') || 'model_card';
 }
 
+function beijingTimestamp(date = new Date(), length = 17) {
+  const normalizedDate = date instanceof Date ? date : new Date(date);
+  const usableDate = Number.isNaN(normalizedDate.getTime()) ? new Date() : normalizedDate;
+  const timestamp = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(usableDate).replace(/\D/g, '');
+  return `${timestamp}${String(usableDate.getMilliseconds()).padStart(3, '0')}`.slice(0, length);
+}
+
 function projectDiskDir(name) {
   return `${n8nPptxOutputRoot.replace(/\/+$/, '')}/${safeFileName(name)}/`;
 }
@@ -1336,7 +1352,7 @@ app.post('/api/submissions', submissionLimiter, upload.fields([
 
     const personName = extractName(introText);
     const submittedAt = new Date();
-    const stamp = submittedAt.toISOString().replace(/[-:T.Z]/g, '').slice(0, 17);
+    const stamp = beijingTimestamp(submittedAt);
     const modelName = safeFileName(`${personName}_${phone}_${rows[0].role_name}_${stamp}_${crypto.randomBytes(3).toString('hex')}`);
     const downloadToken = crypto.randomBytes(24).toString('hex');
 

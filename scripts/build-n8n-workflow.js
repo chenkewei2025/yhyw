@@ -98,6 +98,21 @@ function extractPersonName(text) {
   return cleanPersonName(compact && compact[1]);
 }
 
+function beijingTimestamp(value) {
+  const date = value ? new Date(value) : new Date();
+  const usableDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(usableDate).replace(/\\D/g, '').slice(0, 14);
+}
+
 function projectDirName(value) {
   return clean(value, '未命名项目');
 }
@@ -107,11 +122,13 @@ const processedPersonName = extractPersonName(processedText);
 const incomingPersonName = clean(item.personName, '未识别姓名');
 const personName = processedPersonName || incomingPersonName;
 const phone = clean(item.phone, '未填手机号');
-const uploadTime = clean((item.uploadTime || new Date().toISOString()).replace(/[-:T.Z]/g, '').slice(0, 14));
+const uploadTime = clean(beijingTimestamp(item.uploadTime));
 const incomingModelName = clean(item.modelName || [incomingPersonName, phone, roleName, uploadTime].join('_'));
 const shouldRenameModel = processedPersonName && (!item.personName || item.personName === '未识别姓名' || incomingModelName.startsWith('未识别姓名_'));
 const modelName = shouldRenameModel
-  ? clean([processedPersonName, phone, roleName, uploadTime].join('_'))
+  ? clean(incomingModelName.startsWith('未识别姓名_')
+    ? processedPersonName + incomingModelName.slice('未识别姓名'.length)
+    : [processedPersonName, phone, roleName, uploadTime].join('_'))
   : incomingModelName;
 
 const finalDir = path.join('/home/node/.n8n-files/model-card', projectDirName(item.projectName));
