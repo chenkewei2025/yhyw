@@ -447,8 +447,17 @@ function validateUploadFile(file, label, kind) {
 
 function extractName(introText) {
   const text = String(introText || '');
-  const match = text.match(/姓名[:：\s]*([^\n\r，,；;]+)/);
-  return cleanName(match?.[1]) || '未识别姓名';
+  const explicitMatch = text.match(/姓名[:：\s]*([^\n\r，,；;]+)/);
+  const explicitName = cleanName(explicitMatch?.[1]);
+  if (explicitName) return explicitName;
+
+  const compactMatch = text.match(/^\s*([\u4e00-\u9fa5·]{2,6})(?=\s*(?:身高|年龄|体重|三围|服装|衣服|尺码|鞋码|语言|双语|单语|工作经验|参加过))/);
+  return cleanName(compactMatch?.[1]) || '未识别姓名';
+}
+
+function extractGeneratedPersonName(result) {
+  const name = cleanName(result?.person_name || result?.personName || result?.person_name_normalized || result?.personNameNormalized);
+  return name && name !== '未识别姓名' ? name : '';
 }
 
 function excelFileName(value) {
@@ -1110,6 +1119,7 @@ async function processSubmissionJob(submissionId) {
     const pptxFileName = n8nResult.pptx_file_name || n8nResult.file_name || diskResult?.pptx_file_name || `${payload.modelName}.pptx`;
     const pptxDiskPath = n8nResult.pptx_disk_path || diskResult?.pptx_disk_path || null;
     const pptxBase64 = n8nResult.pptx_base64 || diskResult?.pptx_base64 || null;
+    const personName = extractGeneratedPersonName(n8nResult);
     const safeDiskPath = safePptxDiskPath(pptxDiskPath);
     const hasPptxResult = Boolean(pptxBase64 || (safeDiskPath && fs.existsSync(safeDiskPath)));
     const doneStatus = n8nResult.success === false || !hasPptxResult ? 'failed' : 'done';
@@ -1119,6 +1129,7 @@ async function processSubmissionJob(submissionId) {
       pptxFileName,
       pptxDiskPath,
       pptxBase64,
+      personName,
       doneStatus,
     };
   }
@@ -1149,6 +1160,10 @@ async function processSubmissionJob(submissionId) {
            pptx_base64 = $5,
            pptx_url = $6,
            n8n_response = $7,
+           person_name = CASE
+             WHEN $8::text <> '' AND $2 = 'done' THEN $8
+             ELSE person_name
+           END,
            updated_at = NOW()
        WHERE id = $1`,
       [
@@ -1161,11 +1176,13 @@ async function processSubmissionJob(submissionId) {
         attemptResult.workflowError || attemptResult.doneStatus === 'failed'
           ? { ...attemptResult.n8nResult, pptx_base64: undefined, error: attemptResult.workflowError || 'PPTX 未正确生成' }
           : { ...attemptResult.n8nResult, pptx_base64: undefined },
+        attemptResult.personName,
       ]
     );
   } catch (error) {
     const diskResult = await waitForN8nPptxResult(payload);
     if (diskResult) {
+      const recoveredPersonName = extractGeneratedPersonName(diskResult);
       await pool.query(
         `UPDATE model_card_submissions
          SET status = 'done',
@@ -1174,6 +1191,10 @@ async function processSubmissionJob(submissionId) {
              pptx_base64 = $4,
              pptx_url = $5,
              n8n_response = $6,
+             person_name = CASE
+               WHEN $7::text <> '' THEN $7
+               ELSE person_name
+             END,
              updated_at = NOW()
          WHERE id = $1`,
         [
@@ -1183,6 +1204,7 @@ async function processSubmissionJob(submissionId) {
           diskResult.pptx_base64,
           `${siteUrl}/api/submissions/download/${row.download_token}`,
           { ...diskResult, pptx_base64: undefined, warning: `n8n 返回异常，已从磁盘恢复：${error.message || '未知错误'}` },
+          recoveredPersonName,
         ]
       );
       return;

@@ -25,7 +25,8 @@ function node(name, type, typeVersion, position, parameters, extra = {}) {
 
 async function fetchSourceWorkflow() {
   if (fs.existsSync('/tmp/pptx_nodes.json')) {
-    return JSON.parse(fs.readFileSync('/tmp/pptx_nodes.json', 'utf8'));
+    const exported = JSON.parse(fs.readFileSync('/tmp/pptx_nodes.json', 'utf8'));
+    return Array.isArray(exported) ? exported[0] : exported;
   }
 
   if (!n8nApiKey) {
@@ -85,15 +86,33 @@ function clean(value, fallback = 'unknown') {
   return (text || fallback).replace(/[\\\\/?:*<>|"]/g, '_').replace(/\\s+/g, '_');
 }
 
+function cleanPersonName(value) {
+  return String(value || '').trim().replace(/[\\\\/?:*<>|"]/g, '_').replace(/\\s+/g, '');
+}
+
+function extractPersonName(text) {
+  const explicit = String(text || '').match(/姓名[:：\\s]*([^\\n\\r，,；;]+)/);
+  const explicitName = cleanPersonName(explicit && explicit[1]);
+  if (explicitName) return explicitName;
+  const compact = String(text || '').match(/^\\s*([\\u4e00-\\u9fa5·]{2,6})(?=\\s*(?:身高|年龄|体重|三围|服装|衣服|尺码|鞋码|语言|双语|单语|工作经验|参加过))/);
+  return cleanPersonName(compact && compact[1]);
+}
+
 function projectDirName(value) {
   return clean(value, '未命名项目');
 }
 
 const roleName = clean(item.roleName, '未命名职别');
-const personName = clean(item.personName, '未识别姓名');
+const processedPersonName = extractPersonName(processedText);
+const incomingPersonName = clean(item.personName, '未识别姓名');
+const personName = processedPersonName || incomingPersonName;
 const phone = clean(item.phone, '未填手机号');
 const uploadTime = clean((item.uploadTime || new Date().toISOString()).replace(/[-:T.Z]/g, '').slice(0, 14));
-const modelName = clean(item.modelName || [personName, phone, roleName, uploadTime].join('_'));
+const incomingModelName = clean(item.modelName || [incomingPersonName, phone, roleName, uploadTime].join('_'));
+const shouldRenameModel = processedPersonName && (!item.personName || item.personName === '未识别姓名' || incomingModelName.startsWith('未识别姓名_'));
+const modelName = shouldRenameModel
+  ? clean([processedPersonName, phone, roleName, uploadTime].join('_'))
+  : incomingModelName;
 
 const finalDir = path.join('/home/node/.n8n-files/model-card', projectDirName(item.projectName));
 const tempDir = path.join('/tmp/model-card', projectDirName(item.projectName), modelName);
@@ -112,7 +131,7 @@ function push(filePath, fileName) {
       modelName,
       projectName: item.projectName,
       roleName: item.roleName,
-      personName: item.personName,
+      personName,
       phone: item.phone,
       uploadTime,
       submissionId: item.submissionId,
@@ -189,6 +208,7 @@ return [{
   json: {
     ...item,
     modelName: item.appended_modelName && item.appended_modelName[0] ? item.appended_modelName[0] : 'model_card',
+    personName: item.appended_personName && item.appended_personName[0] ? item.appended_personName[0] : '',
   },
 }];`;
 
@@ -199,6 +219,7 @@ const summary = $('汇总素材路径').item.json;
 const code = $('Code in Python1').item.json;
 const finalDir = summary.appended_finalDir && summary.appended_finalDir[0];
 const modelName = $('准备PPTX输入').item.json.modelName;
+const personName = $('准备PPTX输入').item.json.personName;
 const fileName = modelName + '.pptx';
 const base64Field = Object.keys(code).find((key) => key.startsWith('pptx_base64_'));
 
@@ -254,6 +275,8 @@ return [{
   json: {
     success: code.success !== false,
     submission_id: submissionId,
+    person_name: personName || null,
+    personName: personName || null,
     pptx_file_name: fileName,
     pptx_disk_path: finalDir && fileName ? finalDir + fileName : null,
     pptx_base64_field: base64Field,
@@ -337,6 +360,7 @@ const workflow = {
           { aggregation: 'append', field: 'finalDir' },
           { aggregation: 'append', field: 'submissionId' },
           { aggregation: 'append', field: 'modelName' },
+          { aggregation: 'append', field: 'personName' },
         ],
       },
       options: {
