@@ -483,18 +483,22 @@ userList.addEventListener('click', async (event) => {
 
 projectForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const data = Object.fromEntries(new FormData(projectForm).entries());
-  const id = data.id;
-  delete data.id;
-  await api(id ? `/api/admin/projects/${id}` : '/api/admin/projects', {
-    method: id ? 'PUT' : 'POST',
-    body: JSON.stringify(data),
-  });
-  projectForm.reset();
-  projectForm.elements.id.value = '';
-  await loadProjects();
-  await loadProjectOptions();
-  await loadProjectRoleSummary();
+  try {
+    const data = Object.fromEntries(new FormData(projectForm).entries());
+    const id = data.id;
+    delete data.id;
+    await api(id ? `/api/admin/projects/${id}` : '/api/admin/projects', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    });
+    projectForm.reset();
+    projectForm.elements.id.value = '';
+    await loadProjects();
+    await loadProjectOptions();
+    await loadProjectRoleSummary();
+  } catch (error) {
+    alert(error.message);
+  }
 });
 
 document.querySelector('#resetProjectBtn').addEventListener('click', () => {

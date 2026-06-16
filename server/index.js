@@ -33,6 +33,7 @@ const allowedOrigins = [...new Set([
 ])];
 const appVersion = 'admin-no-github-panel-20260614';
 const mergedPptxJobs = new Map();
+const projectNameRuleMessage = '项目名称已存在，不允许保存同名项目。项目命名规则：年份+城市+品牌+季节';
 const submissionQueue = [];
 let activeSubmissionJobs = 0;
 const submissionWorkerConcurrency = Math.max(1, Number(process.env.SUBMISSION_WORKER_CONCURRENCY || 2) || 2);
@@ -212,6 +213,17 @@ function validatePassword(password) {
 
 function canMaintainProject(admin, project) {
   return Boolean(admin?.isSuperAdmin || String(project?.created_by || '') === String(admin?.id));
+}
+
+async function assertUniqueProjectName(name, excludeId = null) {
+  const params = [name];
+  let where = 'name = $1';
+  if (excludeId) {
+    params.push(excludeId);
+    where += ' AND id <> $2';
+  }
+  const { rows } = await pool.query(`SELECT 1 FROM model_card_projects WHERE ${where} LIMIT 1`, params);
+  if (rows[0]) throw new Error(projectNameRuleMessage);
 }
 
 function safeFileName(value) {
@@ -1975,6 +1987,7 @@ app.post('/api/admin/projects', requireAdmin, async (req, res, next) => {
     const name = cleanName(req.body.name);
     if (!name) throw new Error('项目名称必填');
     const registrationDeadlineAt = parseRegistrationDeadline(req.body.registrationDeadlineAt);
+    await assertUniqueProjectName(name);
     await syncProjectDir({ action: 'mkdir', projectName: name });
     const { rows } = await pool.query(
       `INSERT INTO model_card_projects (name, start_date, end_date, intro, registration_deadline_at, disk_dir, created_by)
@@ -1999,6 +2012,7 @@ app.put('/api/admin/projects/:id', requireAdmin, async (req, res, next) => {
       res.status(403).json({ error: '只能编辑自己创建的项目' });
       return;
     }
+    await assertUniqueProjectName(name, req.params.id);
 
     if (current.rows[0].name !== name) {
       await syncProjectDir({
@@ -2273,6 +2287,10 @@ app.use((error, _req, res, _next) => {
   console.error(error);
   if (error.code === '23505' && error.constraint === 'model_card_admins_username_key') {
     res.status(400).json({ error: '登录名已存在，请换一个登录名' });
+    return;
+  }
+  if (error.code === '23505' && error.constraint === 'model_card_projects_name_key') {
+    res.status(400).json({ error: projectNameRuleMessage });
     return;
   }
   res.status(400).json({ error: error.message || '请求失败' });
