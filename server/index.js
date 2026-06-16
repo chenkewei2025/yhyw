@@ -289,8 +289,10 @@ async function waitForN8nPptxResult(payload, timeoutMs = 15000) {
 async function recoverSubmissionFromDisk(row, warning) {
   const queuedPayload = row?.n8n_response?.queuedPayload;
   if (row?.status === 'done' || !queuedPayload) return row;
-  const diskResult = readN8nPptxResult(queuedPayload);
+  let diskResult = readN8nPptxResult(queuedPayload);
   if (!diskResult) return row;
+  const recoveredPersonName = extractGeneratedPersonName(diskResult) || extractGeneratedPersonName(queuedPayload);
+  diskResult = alignPptxResultName(diskResult, recoveredPersonName);
   const { rows } = await pool.query(
     `UPDATE model_card_submissions
      SET status = 'done',
@@ -299,9 +301,13 @@ async function recoverSubmissionFromDisk(row, warning) {
          pptx_base64 = $4,
          pptx_url = $5,
          n8n_response = $6,
+         person_name = CASE
+           WHEN $7::text <> '' THEN $7
+           ELSE person_name
+         END,
          updated_at = NOW()
      WHERE id = $1
-     RETURNING status, pptx_file_name, pptx_disk_path, pptx_url, n8n_response`,
+     RETURNING status, person_name, pptx_file_name, pptx_disk_path, pptx_url, n8n_response`,
     [
       row.id,
       diskResult.pptx_file_name,
@@ -309,6 +315,7 @@ async function recoverSubmissionFromDisk(row, warning) {
       diskResult.pptx_base64,
       `${siteUrl}/api/submissions/download/${row.download_token}`,
       { ...row.n8n_response, ...diskResult, pptx_base64: undefined, warning },
+      recoveredPersonName,
     ]
   );
   return { ...row, ...rows[0] };
@@ -464,7 +471,7 @@ function validateUploadFile(file, label, kind) {
 function extractName(introText) {
   const text = String(introText || '');
   const explicitMatch = text.match(/姓名[:：\s]*([^\n\r，,；;]+)/);
-  const explicitName = cleanName(explicitMatch?.[1]);
+  const explicitName = cleanName(explicitMatch?.[1]).replace(/\s*(?:身高|年龄|体重|三围|服装|衣服|尺码|鞋码|语言|双语|单语|工作经验|参加过).*$/, '');
   if (explicitName) return explicitName;
 
   const compactMatch = text.match(/^\s*([\u4e00-\u9fa5·]{2,6})(?=\s*(?:身高|年龄|体重|三围|服装|衣服|尺码|鞋码|语言|双语|单语|工作经验|参加过))/);
@@ -474,6 +481,41 @@ function extractName(introText) {
 function extractGeneratedPersonName(result) {
   const name = cleanName(result?.person_name || result?.personName || result?.person_name_normalized || result?.personNameNormalized);
   return name && name !== '未识别姓名' ? name : '';
+}
+
+function alignPptxResultName(result, personName) {
+  const normalizedPersonName = cleanName(personName);
+  if (!normalizedPersonName) return result;
+
+  const currentFileName = safeFileName(result?.pptxFileName || result?.pptx_file_name || result?.file_name || '');
+  const currentDiskPath = safePptxDiskPath(result?.pptxDiskPath || result?.pptx_disk_path);
+  const sourceName = currentFileName || (currentDiskPath ? path.basename(currentDiskPath) : '');
+  if (!sourceName) return result;
+
+  const extension = path.extname(sourceName) || '.pptx';
+  const baseName = sourceName.endsWith(extension) ? sourceName.slice(0, -extension.length) : sourceName;
+  const suffix = baseName.includes('_') ? baseName.slice(baseName.indexOf('_')) : '';
+  const nextFileName = `${safeFileName(normalizedPersonName)}${suffix}${extension}`;
+  let nextDiskPath = currentDiskPath;
+  if (currentDiskPath && path.basename(currentDiskPath) !== nextFileName) {
+    const renamedDiskPath = path.join(path.dirname(currentDiskPath), nextFileName);
+    try {
+      if (fs.existsSync(currentDiskPath) && !fs.existsSync(renamedDiskPath)) {
+        fs.renameSync(currentDiskPath, renamedDiskPath);
+        nextDiskPath = renamedDiskPath;
+      }
+    } catch {
+      nextDiskPath = currentDiskPath;
+    }
+  }
+
+  return {
+    ...result,
+    pptxFileName: nextFileName,
+    pptx_file_name: nextFileName,
+    pptxDiskPath: nextDiskPath || result?.pptxDiskPath,
+    pptx_disk_path: nextDiskPath || result?.pptx_disk_path,
+  };
 }
 
 function excelFileName(value) {
@@ -1135,15 +1177,20 @@ async function processSubmissionJob(submissionId) {
     const diskResult = !n8nResult.pptx_base64
       ? readN8nPptxResult(payload) || readPptxResultFromPath(n8nResult.pptx_disk_path)
       : null;
-    const pptxFileName = n8nResult.pptx_file_name || n8nResult.file_name || diskResult?.pptx_file_name || `${payload.modelName}.pptx`;
-    const pptxDiskPath = n8nResult.pptx_disk_path || diskResult?.pptx_disk_path || null;
-    const pptxBase64 = n8nResult.pptx_base64 || diskResult?.pptx_base64 || null;
     const personName = extractGeneratedPersonName(n8nResult);
+    const alignedResult = alignPptxResultName({
+      ...n8nResult,
+      pptxFileName: n8nResult.pptx_file_name || n8nResult.file_name || diskResult?.pptx_file_name || `${payload.modelName}.pptx`,
+      pptxDiskPath: n8nResult.pptx_disk_path || diskResult?.pptx_disk_path || null,
+    }, personName);
+    const pptxFileName = alignedResult.pptx_file_name || alignedResult.pptxFileName;
+    const pptxDiskPath = alignedResult.pptx_disk_path || alignedResult.pptxDiskPath || null;
+    const pptxBase64 = n8nResult.pptx_base64 || diskResult?.pptx_base64 || null;
     const safeDiskPath = safePptxDiskPath(pptxDiskPath);
     const hasPptxResult = Boolean(pptxBase64 || (safeDiskPath && fs.existsSync(safeDiskPath)));
     const doneStatus = n8nResult.success === false || !hasPptxResult ? 'failed' : 'done';
     return {
-      n8nResult,
+      n8nResult: alignedResult,
       workflowError,
       pptxFileName,
       pptxDiskPath,
@@ -1199,9 +1246,10 @@ async function processSubmissionJob(submissionId) {
       ]
     );
   } catch (error) {
-    const diskResult = await waitForN8nPptxResult(payload);
+    let diskResult = await waitForN8nPptxResult(payload);
     if (diskResult) {
-      const recoveredPersonName = extractGeneratedPersonName(diskResult);
+      const recoveredPersonName = extractGeneratedPersonName(diskResult) || extractGeneratedPersonName(payload);
+      diskResult = alignPptxResultName(diskResult, recoveredPersonName);
       await pool.query(
         `UPDATE model_card_submissions
          SET status = 'done',

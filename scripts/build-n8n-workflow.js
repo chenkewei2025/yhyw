@@ -92,7 +92,7 @@ function cleanPersonName(value) {
 
 function extractPersonName(text) {
   const explicit = String(text || '').match(/姓名[:：\\s]*([^\\n\\r，,；;]+)/);
-  const explicitName = cleanPersonName(explicit && explicit[1]);
+  const explicitName = cleanPersonName(String((explicit && explicit[1]) || '').replace(/\\s*(?:身高|年龄|体重|三围|服装|衣服|尺码|鞋码|语言|双语|单语|工作经验|参加过).*$/, ''));
   if (explicitName) return explicitName;
   const compact = String(text || '').match(/^\\s*([\\u4e00-\\u9fa5·]{2,6})(?=\\s*(?:身高|年龄|体重|三围|服装|衣服|尺码|鞋码|语言|双语|单语|工作经验|参加过))/);
   return cleanPersonName(compact && compact[1]);
@@ -124,10 +124,9 @@ const personName = processedPersonName || incomingPersonName;
 const phone = clean(item.phone, '未填手机号');
 const uploadTime = clean(beijingTimestamp(item.uploadTime));
 const incomingModelName = clean(item.modelName || [incomingPersonName, phone, roleName, uploadTime].join('_'));
-const shouldRenameModel = processedPersonName && (!item.personName || item.personName === '未识别姓名' || incomingModelName.startsWith('未识别姓名_'));
-const modelName = shouldRenameModel
-  ? clean(incomingModelName.startsWith('未识别姓名_')
-    ? processedPersonName + incomingModelName.slice('未识别姓名'.length)
+const modelName = processedPersonName
+  ? clean(incomingModelName.includes('_')
+    ? processedPersonName + incomingModelName.slice(incomingModelName.indexOf('_'))
     : [processedPersonName, phone, roleName, uploadTime].join('_'))
   : incomingModelName;
 
