@@ -36,6 +36,7 @@ const allowedImageFormatText = '.jpg、.jpeg、.bmp、.gif 或 .png';
 const allowedVideoExtensions = ['.mp4', '.m4v', '.mov'];
 const allowedVideoTypes = ['video/mp4', 'video/x-m4v', 'video/quicktime'];
 const allowedVideoFormatText = '.mp4、.m4v 或 .mov 视频';
+const mb = 1024 * 1024;
 
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 11);
@@ -306,7 +307,10 @@ function addOtherPhotos(files) {
   if (!selected.length) return;
   otherPhotoFiles = [...otherPhotoFiles, ...selected].slice(-2);
   renderOtherPhotos();
-  if (!rejected) setStatus('');
+  if (!rejected) {
+    const hasLargePhoto = selected.some((file) => file.size > 6 * mb);
+    setStatus(hasLargePhoto ? '超过 6M 的照片会自动压缩后提交。' : '');
+  }
 }
 
 function validateFiles(formData) {
@@ -315,29 +319,38 @@ function validateFiles(formData) {
   const otherPhotos = otherPhotoFiles;
   const otherVideos = [...form.elements.otherVideos.files];
   const phone = normalizePhone(formData.get('phone'));
-  const mb = 1024 * 1024;
 
   if (!bestPhoto) throw new Error('最佳照片必填');
   if (!bestVideo) throw new Error('最佳视频必填');
   if (phone.length !== 11) throw new Error('联系电话请输入 11 位数字');
   if (!isAllowedImageFile(bestPhoto)) throw new Error(`最佳照片文件类型不支持，请上传 ${allowedImageFormatText} 图片`);
   if (!isAllowedVideoFile(bestVideo)) throw new Error(`最佳视频文件类型不支持，请上传 ${allowedVideoFormatText}`);
-  if (bestPhoto && bestPhoto.size > 6 * mb) throw new Error('最佳照片不能超过 6M');
-  if (bestVideo && bestVideo.size > 30 * mb) throw new Error('最佳视频不能超过 30M');
   if (otherPhotos.length > 2) throw new Error('剩余照片最多 2 张');
   if (otherVideos.length > 1) throw new Error('剩余视频最多 1 个');
   otherPhotos.forEach((file, index) => {
     if (!isAllowedImageFile(file)) throw new Error(`剩余照片${index + 1}文件类型不支持，请上传 ${allowedImageFormatText} 图片`);
-    if (file.size > 6 * mb) throw new Error(`剩余照片${index + 1}不能超过 6M`);
   });
   otherVideos.forEach((file, index) => {
     if (!isAllowedVideoFile(file)) throw new Error(`剩余视频${index + 1}文件类型不支持，请上传 ${allowedVideoFormatText}`);
-    if (file.size > 30 * mb) throw new Error(`剩余视频${index + 1}不能超过 30M`);
   });
   formData.delete('otherPhotos');
   formData.set('phone', phone);
   otherPhotos.forEach((file) => formData.append('otherPhotos', file, file.name));
   return formData;
+}
+
+function hasOversizedMedia() {
+  const files = [
+    form.elements.bestPhoto.files[0],
+    form.elements.bestVideo.files[0],
+    ...otherPhotoFiles,
+    ...form.elements.otherVideos.files,
+  ].filter(Boolean);
+  return files.some((file) => {
+    if (isAllowedImageFile(file)) return file.size > 6 * mb;
+    if (isAllowedVideoFile(file)) return file.size > 30 * mb;
+    return false;
+  });
 }
 
 async function loadOptions(options = {}) {
@@ -445,6 +458,9 @@ form.addEventListener('submit', async (event) => {
     }
 
     const formData = validateFiles(new FormData(form));
+    if (hasOversizedMedia()) {
+      setStatus('素材较大，正在压缩后提交，请稍候...');
+    }
     const response = await fetch('/api/submissions', {
       method: 'POST',
       body: formData,

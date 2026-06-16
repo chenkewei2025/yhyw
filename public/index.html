@@ -63,13 +63,13 @@
         <label>
           <span>*最佳照片</span>
           <input type="file" name="bestPhoto" accept=".jpg,.jpeg,.bmp,.gif,.png,image/jpeg,image/pjpeg,image/bmp,image/x-ms-bmp,image/gif,image/png,image/x-png" required>
-          <small>限制 6M</small>
+          <small>超过 6M 会自动压缩，压缩后仍需不超过 6M</small>
         </label>
 
         <label>
           <span>*最佳视频或自我介绍视频</span>
           <input type="file" name="bestVideo" accept=".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime" required>
-          <small>支持 MP4、M4V、MOV，限制 30M</small>
+          <small>支持 MP4、M4V、MOV，超过 30M 会自动压缩，压缩后仍需不超过 30M</small>
         </label>
 
         <label>
@@ -80,13 +80,13 @@
             <button type="button" class="secondary" id="clearOtherPhotosBtn">重新选择</button>
           </div>
           <div id="otherPhotosNames" class="file-names">未选择照片</div>
-          <small>最多 2 张，每张限制 6M</small>
+          <small>最多 2 张，超过 6M 会自动压缩，压缩后仍需不超过 6M</small>
         </label>
 
         <label>
           <span>剩余视频</span>
           <input type="file" name="otherVideos" accept=".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime">
-          <small>最多 1 个，支持 MP4、M4V、MOV，限制 30M</small>
+          <small>最多 1 个，支持 MP4、M4V、MOV，超过 30M 会自动压缩，压缩后仍需不超过 30M</small>
         </label>
 
         <div class="actions wide">
@@ -130,6 +130,6 @@
     </div>
   </dialog>
 
-  <script src="/entry.js?v=registration-deadline-20260616"></script>
+  <script src="/entry.js?v=media-compress-20260617"></script>
 </body>
 </html>

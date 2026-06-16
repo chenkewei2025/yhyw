@@ -13,6 +13,10 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import JSZip from 'jszip';
+import sharp from 'sharp';
+import ffmpegPath from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
+import { spawn } from 'child_process';
 import { pool, initDb, ensureDefaultAdmin, backfillProjectCreators } from './store.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -53,7 +57,7 @@ const PgSession = connectPgSimple(session);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 30 * 1024 * 1024,
+    fileSize: 200 * 1024 * 1024,
     files: 5,
   },
 });
@@ -415,6 +419,193 @@ function fileToPayload(file, kind) {
 function validateFileSize(file, maxMb, label) {
   if (file && file.size > maxMb * 1024 * 1024) {
     throw new Error(`${label}不能超过 ${maxMb}M`);
+  }
+}
+
+function updateFileBuffer(file, buffer, { originalname, mimetype } = {}) {
+  file.buffer = buffer;
+  file.size = buffer.length;
+  if (originalname) file.originalname = originalname;
+  if (mimetype) file.mimetype = mimetype;
+  return file;
+}
+
+function jpegFileName(fileName) {
+  const parsed = path.parse(fileName || 'photo');
+  return `${parsed.name || 'photo'}.jpg`;
+}
+
+function mp4FileName(fileName) {
+  const parsed = path.parse(fileName || 'video');
+  return `${parsed.name || 'video'}.mp4`;
+}
+
+async function compressImageFile(file, maxMb, label) {
+  const maxBytes = maxMb * 1024 * 1024;
+  if (!file || file.size <= maxBytes) return file;
+
+  let metadata;
+  try {
+    metadata = await sharp(file.buffer, { animated: true }).metadata();
+  } catch {
+    throw new Error(`${label}图片压缩失败，请更换图片后重试`);
+  }
+
+  const widths = [metadata.width, 2400, 2000, 1600, 1280, 1000, 800].filter(Boolean);
+  const qualities = [82, 74, 66, 58, 50, 42, 34];
+  let best = null;
+
+  for (const width of widths) {
+    for (const quality of qualities) {
+      const pipeline = sharp(file.buffer, { animated: true })
+        .rotate()
+        .resize({ width: Math.min(width, metadata.width || width), withoutEnlargement: true })
+        .jpeg({ quality, mozjpeg: true });
+      const output = await pipeline.toBuffer();
+      if (!best || output.length < best.length) best = output;
+      if (output.length <= maxBytes) {
+        return updateFileBuffer(file, output, {
+          originalname: jpegFileName(file.originalname),
+          mimetype: 'image/jpeg',
+        });
+      }
+    }
+  }
+
+  if (best) {
+    updateFileBuffer(file, best, {
+      originalname: jpegFileName(file.originalname),
+      mimetype: 'image/jpeg',
+    });
+  }
+  return file;
+}
+
+function runProcess(command, args, timeoutMs = 180000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('压缩超时'));
+    }, timeoutMs);
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+      if (stderr.length > 8000) stderr = stderr.slice(-8000);
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr || `进程退出码 ${code}`));
+    });
+  });
+}
+
+function probeVideoDuration(filePath) {
+  return new Promise((resolve) => {
+    const command = ffprobeStatic?.path;
+    if (!command) {
+      resolve(0);
+      return;
+    }
+
+    const child = spawn(command, [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath,
+    ], { stdio: ['ignore', 'pipe', 'ignore'] });
+
+    let stdout = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      resolve(0);
+    }, 15000);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(0);
+    });
+    child.on('close', () => {
+      clearTimeout(timer);
+      const duration = Number.parseFloat(stdout);
+      resolve(Number.isFinite(duration) && duration > 0 ? duration : 0);
+    });
+  });
+}
+
+async function compressVideoFile(file, maxMb, label) {
+  const maxBytes = maxMb * 1024 * 1024;
+  if (!file || file.size <= maxBytes) return file;
+  if (!ffmpegPath) throw new Error(`${label}超过 ${maxMb}M，当前环境缺少视频压缩组件`);
+
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-card-video-'));
+  const inputPath = path.join(workDir, `input${path.extname(file.originalname || '') || '.mp4'}`);
+  const outputPath = path.join(workDir, 'output.mp4');
+
+  try {
+    fs.writeFileSync(inputPath, file.buffer);
+    const probedDuration = await probeVideoDuration(inputPath);
+    const durationSeconds = Math.max(1, Math.ceil(probedDuration || file.size / (1024 * 1024)));
+    const targetBits = Math.floor(maxBytes * 8 * 0.88);
+    const targetKbps = Math.max(420, Math.floor(targetBits / durationSeconds / 1000));
+    const videoKbps = Math.max(300, targetKbps - 96);
+
+    await runProcess(ffmpegPath, [
+      '-y',
+      '-i', inputPath,
+      '-map', '0:v:0',
+      '-map', '0:a?',
+      '-vf', 'scale=720:-2',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-b:v', `${videoKbps}k`,
+      '-maxrate', `${videoKbps}k`,
+      '-bufsize', `${videoKbps * 2}k`,
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-b:a', '96k',
+      '-movflags', '+faststart',
+      outputPath,
+    ]);
+
+    if (!fs.existsSync(outputPath)) throw new Error('未生成压缩视频');
+    const output = fs.readFileSync(outputPath);
+    return updateFileBuffer(file, output, {
+      originalname: mp4FileName(file.originalname),
+      mimetype: 'video/mp4',
+    });
+  } catch (error) {
+    throw new Error(`${label}视频压缩失败：${error.message || '未知错误'}`);
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+async function compressUploadFiles(files) {
+  const bestPhoto = files?.bestPhoto?.[0];
+  const bestVideo = files?.bestVideo?.[0];
+  const otherPhotos = files?.otherPhotos || [];
+  const otherVideos = files?.otherVideos || [];
+
+  await compressImageFile(bestPhoto, 6, '最佳照片');
+  for (let index = 0; index < otherPhotos.length; index += 1) {
+    await compressImageFile(otherPhotos[index], 6, `剩余照片${index + 1}`);
+  }
+  await compressVideoFile(bestVideo, 30, '最佳视频');
+  for (let index = 0; index < otherVideos.length; index += 1) {
+    await compressVideoFile(otherVideos[index], 30, `剩余视频${index + 1}`);
   }
 }
 
@@ -1411,14 +1602,15 @@ app.post('/api/submissions', submissionLimiter, upload.fields([
 
     if (!bestPhoto) throw new Error('最佳照片必填');
     if (!bestVideo) throw new Error('最佳视频必填');
-    validateFileSize(bestPhoto, 6, '最佳照片');
-    validateFileSize(bestVideo, 30, '最佳视频');
-    otherPhotos.forEach((file, index) => validateFileSize(file, 6, `剩余照片${index + 1}`));
-    otherVideos.forEach((file, index) => validateFileSize(file, 30, `剩余视频${index + 1}`));
     validateUploadFile(bestPhoto, '最佳照片', 'image');
     otherPhotos.forEach((file, index) => validateUploadFile(file, `剩余照片${index + 1}`, 'image'));
     validateUploadFile(bestVideo, '最佳视频', 'video');
     otherVideos.forEach((file, index) => validateUploadFile(file, `剩余视频${index + 1}`, 'video'));
+    await compressUploadFiles(req.files);
+    validateFileSize(bestPhoto, 6, '最佳照片');
+    validateFileSize(bestVideo, 30, '最佳视频');
+    otherPhotos.forEach((file, index) => validateFileSize(file, 6, `剩余照片${index + 1}`));
+    otherVideos.forEach((file, index) => validateFileSize(file, 30, `剩余视频${index + 1}`));
 
     const { rows } = await pool.query(
       `SELECT p.name AS project_name, p.intro AS project_intro, p.start_date, p.end_date,
