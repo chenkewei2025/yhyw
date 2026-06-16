@@ -108,6 +108,38 @@ function formatProjectDate(project) {
   return start || end || '未设置';
 }
 
+function formatDateTime(value) {
+  if (!value) return '未设置';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16).replace('T', ' ');
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function toDateTimeLocalValue(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function isProjectClosed(project) {
+  if (!project?.registration_deadline_at) return false;
+  const deadline = new Date(project.registration_deadline_at);
+  return !Number.isNaN(deadline.getTime()) && Date.now() > deadline.getTime();
+}
+
 function renderProjects() {
   const previousFilterProject = filterProject.value;
   projectList.innerHTML = projects.map((project) => `
@@ -122,7 +154,8 @@ function renderProjects() {
           ${project.canDelete ? `<button class="secondary" data-delete-project="${project.id}">删除</button>` : ''}
         </div>
       </div>
-      <div class="meta">${formatProjectDate(project)}
+      <div class="meta">项目日期：${formatProjectDate(project)}
+报名截止：${formatDateTime(project.registration_deadline_at)}${isProjectClosed(project) ? '（已截止）' : ''}
 ${escapeHtml(project.intro || '暂无介绍')}</div>
     </div>
   `).join('') || '<p class="muted">暂无项目</p>';
@@ -499,6 +532,7 @@ projectList.addEventListener('click', async (event) => {
     projectForm.elements.startDate.value = project.start_date ? project.start_date.slice(0, 10) : '';
     projectForm.elements.endDate.value = project.end_date ? project.end_date.slice(0, 10) : '';
     projectForm.elements.intro.value = project.intro || '';
+    projectForm.elements.registrationDeadlineAt.value = toDateTimeLocalValue(project.registration_deadline_at);
   }
   if (deleteId && confirm('删除项目，同时删除本项目的职别记录和生成的pptx文件和清单')) {
     try {

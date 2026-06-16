@@ -103,13 +103,15 @@ small,
 }
 
 label,
-.project-intro {
+.project-intro,
+.project-countdown {
   display: grid;
   gap: 7px;
 }
 
 label span,
-.project-intro > span {
+.project-intro > span,
+.project-countdown > span {
   font-size: 14px;
   font-weight: 650;
 }
@@ -215,13 +217,25 @@ textarea:focus {
   color: var(--muted);
 }
 
-.intro-box {
+.intro-box,
+.countdown-box {
   min-height: 74px;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 12px;
   background: var(--soft);
   white-space: pre-wrap;
+}
+
+.countdown-box {
+  min-height: 48px;
+  font-weight: 650;
+}
+
+.countdown-box.error {
+  border-color: rgba(180, 35, 24, 0.35);
+  background: #fff1f0;
+  color: var(--danger);
 }
 
 .actions,

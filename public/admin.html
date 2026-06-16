@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>模卡后台管理</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=registration-deadline-20260616">
 </head>
 <body>
   <main class="admin-shell">
@@ -43,8 +43,13 @@
               <label><span>结束日期</span><input name="endDate" type="date"></label>
             </div>
             <label><span>项目介绍</span><textarea name="intro" rows="5"></textarea></label>
+            <label>
+              <span>报名截止日期时间</span>
+              <input name="registrationDeadlineAt" type="datetime-local" step="60">
+            </label>
             <div class="actions">
               <button type="submit">保存项目</button>
+              <button type="submit" id="updateProjectBtn" class="secondary">修改</button>
               <button type="button" id="resetProjectBtn" class="secondary">清空</button>
               <button type="button" id="cleanupExpiredProjectsBtn" class="secondary">清理过期项目</button>
             </div>
@@ -153,6 +158,6 @@
       </div>
     </dialog>
   </main>
-  <script src="/admin.js?v=role-pptx-cleanup-20260615"></script>
+  <script src="/admin.js?v=registration-deadline-20260616"></script>
 </body>
 </html>

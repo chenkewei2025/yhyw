@@ -1,6 +1,7 @@
 const projectSelect = document.querySelector('#projectSelect');
 const roleSelect = document.querySelector('#roleSelect');
 const projectIntro = document.querySelector('#projectIntro');
+const projectCountdown = document.querySelector('#projectCountdown');
 const form = document.querySelector('#entryForm');
 const statusEl = document.querySelector('#status');
 const downloadBtn = document.querySelector('#downloadBtn');
@@ -26,6 +27,8 @@ let lastDownloadUrl = '';
 let otherPhotoFiles = [];
 let submissionStatusTimer = null;
 let submissionLocked = false;
+let countdownTimer = null;
+let optionsRefreshTimer = null;
 
 const allowedImageExtensions = ['.jpg', '.jpeg', '.bmp', '.gif', '.png'];
 const allowedImageTypes = ['image/jpeg', 'image/pjpeg', 'image/bmp', 'image/x-ms-bmp', 'image/gif', 'image/png', 'image/x-png'];
@@ -80,6 +83,16 @@ function setSubmissionLocked(locked, label = '提交') {
   submitBtn.textContent = label;
 }
 
+function isProjectClosed(project) {
+  if (!project?.registration_deadline_at) return false;
+  const deadline = new Date(project.registration_deadline_at);
+  return !Number.isNaN(deadline.getTime()) && Date.now() > deadline.getTime();
+}
+
+function selectableProjects() {
+  return projects.filter((project) => !isProjectClosed(project));
+}
+
 function selectedProject() {
   return projects.find((project) => String(project.id) === projectSelect.value);
 }
@@ -89,7 +102,8 @@ function selectedRole() {
 }
 
 function hasSelectableRole() {
-  return Boolean(projects.length && roles.some((role) => String(role.project_id) === projectSelect.value));
+  const project = selectedProject();
+  return Boolean(project && !isProjectClosed(project) && roles.some((role) => String(role.project_id) === projectSelect.value));
 }
 
 function formatProjectDate(project) {
@@ -107,6 +121,86 @@ function renderProjectIntro(project) {
     return;
   }
   projectIntro.textContent = `${formatProjectDate(project)}\n\n${project.intro || '暂无项目介绍'}`;
+}
+
+function formatDeadline(value) {
+  if (!value) return '未设置';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16).replace('T', ' ');
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+  if (days) parts.push(`${days}天`);
+  parts.push(`${String(hours).padStart(2, '0')}小时`);
+  parts.push(`${String(minutes).padStart(2, '0')}分`);
+  parts.push(`${String(seconds).padStart(2, '0')}秒`);
+  return parts.join('');
+}
+
+function renderProjectCountdown(project) {
+  if (!project) {
+    projectCountdown.textContent = '请选择报名项目';
+    projectCountdown.classList.remove('error');
+    return;
+  }
+  if (!project.registration_deadline_at) {
+    projectCountdown.textContent = '未设置报名截止时间';
+    projectCountdown.classList.remove('error');
+    return;
+  }
+
+  const deadline = new Date(project.registration_deadline_at);
+  if (Number.isNaN(deadline.getTime())) {
+    projectCountdown.textContent = '报名截止时间格式无效';
+    projectCountdown.classList.add('error');
+    return;
+  }
+
+  const remaining = deadline.getTime() - Date.now();
+  if (remaining < 0) {
+    projectCountdown.textContent = `报名已截止（截止时间：${formatDeadline(project.registration_deadline_at)}）`;
+    projectCountdown.classList.add('error');
+    return;
+  }
+
+  projectCountdown.textContent = `距离报名截止还有 ${formatCountdown(remaining)}（截止时间：${formatDeadline(project.registration_deadline_at)}）`;
+  projectCountdown.classList.remove('error');
+}
+
+function startCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    const project = selectedProject();
+    renderProjectCountdown(project);
+    if (project && isProjectClosed(project)) {
+      loadOptions({ showClosedAlert: true }).catch((error) => setStatus(error.message, true));
+    }
+  }, 1000);
+}
+
+function startOptionsRefresh() {
+  if (optionsRefreshTimer) clearInterval(optionsRefreshTimer);
+  optionsRefreshTimer = setInterval(() => {
+    loadOptions({ silent: true }).catch(() => {});
+  }, 30000);
 }
 
 function formatDateValue(value) {
@@ -143,23 +237,46 @@ function showSuccessDialog(data, formData) {
   alert(`报名成功\n项目名称：${details.projectName}\n项目开始时间：${details.startDate}\n项目结束时间：${details.endDate}\n姓名：${details.personName}\n职别：${details.roleName}`);
 }
 
-function renderProjects() {
-  projectSelect.innerHTML = projects.map((project) => (
+function renderProjects(preferredProjectId = '', options = {}) {
+  const availableProjects = selectableProjects();
+  projectSelect.innerHTML = availableProjects.map((project) => (
     `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`
   )).join('');
-  projectSelect.disabled = false;
-  roleSelect.disabled = false;
+  if (preferredProjectId && availableProjects.some((project) => String(project.id) === String(preferredProjectId))) {
+    projectSelect.value = preferredProjectId;
+  }
+  projectSelect.disabled = !availableProjects.length;
+  roleSelect.disabled = !availableProjects.length;
+  if (!availableProjects.length) {
+    roleSelect.innerHTML = '<option value="">当前没有可报名项目</option>';
+    submitBtn.disabled = true;
+    renderProjectIntro(null);
+    projectCountdown.textContent = '报名已截止';
+    projectCountdown.classList.add('error');
+    if (!options.silent) setStatus('当前没有可报名项目，报名已截止。', true);
+    return;
+  }
   renderRoles();
 }
 
 function renderRoles() {
   const project = selectedProject();
+  if (project && isProjectClosed(project)) {
+    roleSelect.innerHTML = '<option value="">报名已截止</option>';
+    roleSelect.disabled = true;
+    submitBtn.disabled = true;
+    renderProjectIntro(project);
+    renderProjectCountdown(project);
+    setStatus('该项目报名已截止，请选择其他项目。', true);
+    return;
+  }
   const projectRoles = roles.filter((role) => String(role.project_id) === projectSelect.value);
   if (!projectRoles.length) {
     roleSelect.innerHTML = '<option value="">当前项目暂无职别</option>';
     roleSelect.disabled = true;
     submitBtn.disabled = true;
     renderProjectIntro(project);
+    renderProjectCountdown(project);
     setStatus('当前项目还没有可报名职别，请先在后台维护。', true);
     return;
   }
@@ -169,6 +286,7 @@ function renderRoles() {
   roleSelect.disabled = false;
   setSubmissionLocked(submissionLocked);
   renderProjectIntro(project);
+  renderProjectCountdown(project);
   setStatus('');
 }
 
@@ -222,7 +340,8 @@ function validateFiles(formData) {
   return formData;
 }
 
-async function loadOptions() {
+async function loadOptions(options = {}) {
+  const previousProjectId = projectSelect.value;
   const response = await fetch('/api/public/options');
   const data = await response.json();
   projects = data.projects || [];
@@ -234,10 +353,17 @@ async function loadOptions() {
     roleSelect.disabled = true;
     submitBtn.disabled = true;
     projectIntro.textContent = '当前项目表 model_card_projects 为空，请先登录后台新增项目和职别。';
-    setStatus('当前没有可报名项目，请先在后台项目维护中新增项目。', true);
+    projectCountdown.textContent = '当前没有可报名项目';
+    projectCountdown.classList.add('error');
+    if (!options.silent) setStatus('当前没有可报名项目，请先在后台项目维护中新增项目。', true);
     return;
   }
-  renderProjects();
+  const availableProjects = selectableProjects();
+  if (options.showClosedAlert && previousProjectId && !availableProjects.some((project) => String(project.id) === previousProjectId)) {
+    alert('报名已截止');
+  }
+  renderProjects(previousProjectId, options);
+  startCountdown();
 }
 
 async function pollSubmissionStatus(statusUrl, formData) {
@@ -312,6 +438,12 @@ form.addEventListener('submit', async (event) => {
     downloadBtn.disabled = true;
     lastDownloadUrl = '';
 
+    const project = selectedProject();
+    if (!project || isProjectClosed(project)) {
+      alert('报名已截止');
+      throw new Error('报名已截止');
+    }
+
     const formData = validateFiles(new FormData(form));
     const response = await fetch('/api/submissions', {
       method: 'POST',
@@ -333,4 +465,5 @@ form.addEventListener('submit', async (event) => {
 });
 
 loadOptions().catch((error) => setStatus(error.message, true));
+startOptionsRefresh();
 renderOtherPhotos();

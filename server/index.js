@@ -445,6 +445,21 @@ function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 11);
 }
 
+function parseRegistrationDeadline(value) {
+  const text = cleanName(value);
+  if (!text) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text) ? `${text}:00+08:00` : text;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) throw new Error('报名截止日期时间格式无效');
+  return date;
+}
+
+function isRegistrationClosed(project) {
+  if (!project?.registration_deadline_at) return false;
+  const deadline = new Date(project.registration_deadline_at);
+  return !Number.isNaN(deadline.getTime()) && Date.now() > deadline.getTime();
+}
+
 function isAllowedVideo(file) {
   const buffer = file?.buffer;
   const mime = String(file?.mimetype || '').toLowerCase();
@@ -1342,7 +1357,7 @@ app.get('/health', (_req, res) => {
 app.get('/api/public/options', async (_req, res, next) => {
   try {
     const { rows: projects } = await pool.query(
-      `SELECT id, name, intro, start_date, end_date
+      `SELECT id, name, intro, start_date, end_date, registration_deadline_at
        FROM model_card_projects
        ORDER BY created_at DESC, name ASC`
     );
@@ -1394,13 +1409,18 @@ app.post('/api/submissions', submissionLimiter, upload.fields([
     otherVideos.forEach((file, index) => validateUploadFile(file, `剩余视频${index + 1}`, 'video'));
 
     const { rows } = await pool.query(
-      `SELECT p.name AS project_name, p.intro AS project_intro, p.start_date, p.end_date, r.name AS role_name
+      `SELECT p.name AS project_name, p.intro AS project_intro, p.start_date, p.end_date,
+              p.registration_deadline_at, r.name AS role_name
        FROM model_card_projects p
        JOIN model_card_roles r ON r.project_id = p.id
        WHERE p.id = $1 AND r.id = $2`,
       [projectId, roleId]
     );
     if (!rows[0]) throw new Error('项目或职别无效');
+    if (isRegistrationClosed(rows[0])) {
+      res.status(409).json({ error: '报名已截止' });
+      return;
+    }
 
     const personName = extractName(introText);
     const submittedAt = new Date();
@@ -1954,12 +1974,13 @@ app.post('/api/admin/projects', requireAdmin, async (req, res, next) => {
   try {
     const name = cleanName(req.body.name);
     if (!name) throw new Error('项目名称必填');
+    const registrationDeadlineAt = parseRegistrationDeadline(req.body.registrationDeadlineAt);
     await syncProjectDir({ action: 'mkdir', projectName: name });
     const { rows } = await pool.query(
-      `INSERT INTO model_card_projects (name, start_date, end_date, intro, disk_dir, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO model_card_projects (name, start_date, end_date, intro, registration_deadline_at, disk_dir, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING *`,
-      [name, req.body.startDate || null, req.body.endDate || null, cleanName(req.body.intro), projectDiskDir(name), req.admin.id]
+      [name, req.body.startDate || null, req.body.endDate || null, cleanName(req.body.intro), registrationDeadlineAt, projectDiskDir(name), req.admin.id]
     );
     res.json({ project: rows[0] });
   } catch (error) {
@@ -1971,6 +1992,7 @@ app.put('/api/admin/projects/:id', requireAdmin, async (req, res, next) => {
   try {
     const name = cleanName(req.body.name);
     if (!name) throw new Error('项目名称必填');
+    const registrationDeadlineAt = parseRegistrationDeadline(req.body.registrationDeadlineAt);
     const current = await pool.query('SELECT name, created_by FROM model_card_projects WHERE id = $1', [req.params.id]);
     if (!current.rows[0]) throw new Error('项目不存在');
     if (!canMaintainProject(req.admin, current.rows[0])) {
@@ -1990,10 +2012,10 @@ app.put('/api/admin/projects/:id', requireAdmin, async (req, res, next) => {
 
     const { rows } = await pool.query(
       `UPDATE model_card_projects
-       SET name=$2, start_date=$3, end_date=$4, intro=$5, disk_dir=$6, updated_at=NOW()
+       SET name=$2, start_date=$3, end_date=$4, intro=$5, registration_deadline_at=$6, disk_dir=$7, updated_at=NOW()
        WHERE id=$1
        RETURNING *`,
-      [req.params.id, name, req.body.startDate || null, req.body.endDate || null, cleanName(req.body.intro), projectDiskDir(name)]
+      [req.params.id, name, req.body.startDate || null, req.body.endDate || null, cleanName(req.body.intro), registrationDeadlineAt, projectDiskDir(name)]
     );
     res.json({ project: rows[0] });
   } catch (error) {

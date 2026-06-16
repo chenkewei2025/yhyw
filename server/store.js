@@ -78,6 +78,7 @@ export async function initDb() {
       start_date date,
       end_date date,
       intro text NOT NULL DEFAULT '',
+      registration_deadline_at timestamptz,
       disk_dir text,
       created_by uuid REFERENCES model_card_admins(id) ON DELETE SET NULL,
       created_at timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -96,6 +97,10 @@ export async function initDb() {
   await pool.query(`
     ALTER TABLE model_card_projects
     ADD COLUMN IF NOT EXISTS intro text DEFAULT ''
+  `);
+  await pool.query(`
+    ALTER TABLE model_card_projects
+    ADD COLUMN IF NOT EXISTS registration_deadline_at timestamptz
   `);
   await pool.query(`
     ALTER TABLE model_card_projects
