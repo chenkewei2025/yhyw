@@ -12,18 +12,18 @@
       <div class="topbar">
         <div>
           <h1>模卡报名</h1>
-          <p class="muted">提交素材生成 PPTX 模卡并完成项目报名。姓名作为识别您身份的标签一定要写。素材图片视频都需要竖版，以适配pptx页面，如果是横版请自行调整。点击提交按钮即已完成项目报名操作。</p>
+          <p class="muted">提交素材生成 PPTX 模卡并完成项目报名。姓名作为识别您身份的标签一定要写。素材图片视频都需要竖版，以适配pptx页面，如果是横版请自行调整。点击提交按钮后，等待报名成功回执以确认报名成功。可自行下载生成的pptx文件看模卡效果或留用，不作为报名的必要条件。</p>
         </div>
       </div>
 
       <form id="entryForm" class="form-grid">
         <label>
-          <span>报名项目</span>
+          <span>*报名项目</span>
           <select name="projectId" id="projectSelect" required></select>
         </label>
 
         <label>
-          <span>报名职别</span>
+          <span>*报名职别</span>
           <select name="roleId" id="roleSelect" required></select>
         </label>
 
@@ -33,7 +33,7 @@
         </div>
 
         <label class="wide">
-          <span>自我介绍文本</span>
+          <span>*自我介绍文本</span>
           <textarea name="introText" id="introText" rows="12" required placeholder="不要把联系电话、微信号写在这里。资料内容需按下面提示内容填写完整，可在线编辑或粘贴完整文本内容到这里：
 姓名：
 身高：
@@ -46,7 +46,7 @@
         </label>
 
         <label>
-          <span>联系电话</span>
+          <span>*联系电话</span>
           <input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="[0-9]{11}" required>
         </label>
 
@@ -56,13 +56,13 @@
         </label>
 
         <label>
-          <span>最佳照片</span>
+          <span>*最佳照片</span>
           <input type="file" name="bestPhoto" accept=".jpg,.jpeg,.bmp,.gif,.png,image/jpeg,image/pjpeg,image/bmp,image/x-ms-bmp,image/gif,image/png,image/x-png" required>
           <small>限制 6M</small>
         </label>
 
         <label>
-          <span>最佳视频</span>
+          <span>*最佳视频或自我介绍视频</span>
           <input type="file" name="bestVideo" accept=".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime" required>
           <small>支持 MP4、M4V、MOV，限制 30M</small>
         </label>
