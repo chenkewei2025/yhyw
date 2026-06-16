@@ -31,6 +31,7 @@ Environment overrides:
   GIT_HTTP_VERSION=HTTP/1.1
   INSTALL_CMD="npm install --omit=dev"
   RESTART_CMD="docker compose restart nodejs"
+  REBUILD_IMAGE=1
 
 Examples:
   scripts/deploy-nodejs.sh
@@ -57,6 +58,7 @@ ssh_opts="${SSH_OPTS:-}"
 git_http_version="${GIT_HTTP_VERSION:-HTTP/1.1}"
 install_cmd="${INSTALL_CMD:-npm install --omit=dev}"
 restart_cmd="${RESTART_CMD:-docker compose restart $service}"
+rebuild_image="${REBUILD_IMAGE:-}"
 
 if [[ -z "$branch" ]]; then
   echo "Error: cannot determine git branch. Pass it explicitly: scripts/deploy-nodejs.sh $remote main" >&2
@@ -129,6 +131,7 @@ health_url="$health_url"
 git_http_version="$git_http_version"
 install_cmd="$install_cmd"
 restart_cmd="$restart_cmd"
+rebuild_image="$rebuild_image"
 expected_head="$local_head"
 git_remote_url="$(git config --get remote.origin.url)"
 
@@ -194,8 +197,12 @@ fi
 echo "Fixing app directory permissions inside container..."
 docker exec -u root "\$container" sh -lc "mkdir -p \"\$container_app_dir\" && chown -R \"\$app_user\" \"\$container_app_dir\""
 
-echo "Ensuring ffmpeg is available inside container..."
-docker exec -u root "\$container" sh -lc "if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*; fi"
+if [ "\$rebuild_image" = "1" ]; then
+  echo "Rebuilding \$service image..."
+  cd "\$compose_dir"
+  docker compose build "\$service"
+  restart_cmd="docker compose up -d --no-deps --force-recreate \$service"
+fi
 
 echo "Installing dependencies inside container..."
 docker exec "\$container" sh -lc "cd \"\$container_app_dir\" && \$install_cmd"
