@@ -14,8 +14,6 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import JSZip from 'jszip';
 import sharp from 'sharp';
-import ffmpegPath from 'ffmpeg-static';
-import ffprobeStatic from 'ffprobe-static';
 import { spawn } from 'child_process';
 import { pool, initDb, ensureDefaultAdmin, backfillProjectCreators } from './store.js';
 
@@ -511,13 +509,7 @@ function runProcess(command, args, timeoutMs = 180000) {
 
 function probeVideoDuration(filePath) {
   return new Promise((resolve) => {
-    const command = ffprobeStatic?.path;
-    if (!command) {
-      resolve(0);
-      return;
-    }
-
-    const child = spawn(command, [
+    const child = spawn('ffprobe', [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -548,7 +540,6 @@ function probeVideoDuration(filePath) {
 async function compressVideoFile(file, maxMb, label) {
   const maxBytes = maxMb * 1024 * 1024;
   if (!file || file.size <= maxBytes) return file;
-  if (!ffmpegPath) throw new Error(`${label}超过 ${maxMb}M，当前环境缺少视频压缩组件`);
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'model-card-video-'));
   const inputPath = path.join(workDir, `input${path.extname(file.originalname || '') || '.mp4'}`);
@@ -562,7 +553,7 @@ async function compressVideoFile(file, maxMb, label) {
     const targetKbps = Math.max(420, Math.floor(targetBits / durationSeconds / 1000));
     const videoKbps = Math.max(300, targetKbps - 96);
 
-    await runProcess(ffmpegPath, [
+    await runProcess('ffmpeg', [
       '-y',
       '-i', inputPath,
       '-map', '0:v:0',
@@ -587,6 +578,9 @@ async function compressVideoFile(file, maxMb, label) {
       mimetype: 'video/mp4',
     });
   } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(`${label}超过 ${maxMb}M，当前环境缺少视频压缩组件 ffmpeg`);
+    }
     throw new Error(`${label}视频压缩失败：${error.message || '未知错误'}`);
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });

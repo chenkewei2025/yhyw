@@ -194,6 +194,9 @@ fi
 echo "Fixing app directory permissions inside container..."
 docker exec -u root "\$container" sh -lc "mkdir -p \"\$container_app_dir\" && chown -R \"\$app_user\" \"\$container_app_dir\""
 
+echo "Ensuring ffmpeg is available inside container..."
+docker exec -u root "\$container" sh -lc "if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*; fi"
+
 echo "Installing dependencies inside container..."
 docker exec "\$container" sh -lc "cd \"\$container_app_dir\" && \$install_cmd"
 
