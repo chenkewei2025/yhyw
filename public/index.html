@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>模卡报名</title>
-  <link rel="stylesheet" href="/styles.css?v=registration-deadline-20260616">
+  <link rel="stylesheet" href="/styles.css?v=intro-template-20260617">
 </head>
 <body>
   <main class="shell">
@@ -37,10 +37,13 @@
           <div id="projectCountdown" class="countdown-box">请选择报名项目</div>
         </div>
 
-        <label class="wide">
-          <span>*自我介绍文本</span>
-          <textarea name="introText" id="introText" rows="12" required placeholder="不要把联系电话、微信号写在这里。资料内容需按下面提示内容填写完整，可在线编辑或粘贴完整文本内容到这里：
-姓名：
+        <div class="wide intro-text-field">
+          <label for="introText">*自我介绍文本</label>
+          <small class="field-hint">不要把联系电话、微信号写在这里。资料内容需要按下面提示内容填写完整，可在线编辑或下载模板编辑文字后复制粘贴文本内容到这里：</small>
+          <div class="template-actions">
+            <button type="button" class="secondary" id="downloadIntroTemplateBtn">下载模版</button>
+          </div>
+          <textarea name="introText" id="introText" rows="12" required placeholder="姓名：
 身高：
 体重：
 三围：
@@ -48,7 +51,7 @@
 鞋码：
 语言能力：
 工作经验："></textarea>
-        </label>
+        </div>
 
         <label>
           <span>*联系电话</span>
@@ -130,6 +133,6 @@
     </div>
   </dialog>
 
-  <script src="/entry.js?v=media-compress-20260617"></script>
+  <script src="/entry.js?v=intro-template-20260617"></script>
 </body>
 </html>

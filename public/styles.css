@@ -104,16 +104,29 @@ small,
 
 label,
 .project-intro,
-.project-countdown {
+.project-countdown,
+.intro-text-field {
   display: grid;
   gap: 7px;
 }
 
 label span,
+.intro-text-field > label,
 .project-intro > span,
 .project-countdown > span {
   font-size: 14px;
   font-weight: 650;
+}
+
+.intro-text-field .field-hint {
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 input,

@@ -10,6 +10,7 @@ const otherPhotosInput = document.querySelector('#otherPhotosInput');
 const chooseOtherPhotoBtn = document.querySelector('#chooseOtherPhotoBtn');
 const clearOtherPhotosBtn = document.querySelector('#clearOtherPhotosBtn');
 const otherPhotosNames = document.querySelector('#otherPhotosNames');
+const downloadIntroTemplateBtn = document.querySelector('#downloadIntroTemplateBtn');
 const phoneInput = form.elements.phone;
 const successDialog = document.querySelector('#successDialog');
 const successDialogClose = document.querySelector('#successDialogClose');
@@ -37,6 +38,16 @@ const allowedVideoExtensions = ['.mp4', '.m4v', '.mov'];
 const allowedVideoTypes = ['video/mp4', 'video/x-m4v', 'video/quicktime'];
 const allowedVideoFormatText = '.mp4、.m4v 或 .mov 视频';
 const mb = 1024 * 1024;
+const introTemplateText = [
+  '姓名：',
+  '身高：',
+  '体重：',
+  '三围：',
+  '服装尺码：',
+  '鞋码：',
+  '语言能力：',
+  '工作经验：',
+].join('\r\n');
 
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 11);
@@ -432,6 +443,17 @@ otherPhotosInput.addEventListener('change', () => {
 });
 downloadBtn.addEventListener('click', () => {
   if (lastDownloadUrl) window.location.href = lastDownloadUrl;
+});
+downloadIntroTemplateBtn.addEventListener('click', () => {
+  const blob = new Blob(['\ufeff', introTemplateText], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '自我介绍模版.txt';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 successDialogClose.addEventListener('click', () => {
   successDialog.close();
