@@ -259,6 +259,26 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.submission-guide {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.submission-guide p,
+.submission-guide ol {
+  margin: 0 0 8px;
+}
+
+.submission-guide ol {
+  padding-left: 1.5em;
+}
+
+.submission-guide li + li {
+  margin-top: 4px;
+}
+
 .table-actions {
   justify-content: flex-end;
   margin-top: 14px;
