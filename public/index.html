@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>模卡报名</title>
-  <link rel="stylesheet" href="/styles.css?v=intro-template-20260617">
+  <link rel="stylesheet" href="/styles.css?v=project-overview-20260618">
 </head>
 <body>
   <main class="shell">
@@ -17,6 +17,11 @@
       </div>
 
       <form id="entryForm" class="form-grid">
+        <section class="project-overview wide" aria-labelledby="projectOverviewTitle">
+          <h2 id="projectOverviewTitle">报名项目总览</h2>
+          <div id="projectOverviewList" class="project-overview-list">正在加载报名项目...</div>
+        </section>
+
         <label>
           <span>*报名项目</span>
           <select name="projectId" id="projectSelect" required></select>
@@ -156,6 +161,6 @@
     </div>
   </dialog>
 
-  <script src="/entry.js?v=intro-template-20260617"></script>
+  <script src="/entry.js?v=project-overview-20260618"></script>
 </body>
 </html>

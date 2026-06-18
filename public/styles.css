@@ -123,6 +123,75 @@ label span,
   line-height: 1.45;
 }
 
+.project-overview {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.project-overview h2 {
+  margin: 0;
+}
+
+.project-overview-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-overview-item {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.project-overview-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.project-overview-fields div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-right: 1px solid var(--line);
+}
+
+.project-overview-fields div:nth-child(3) {
+  border-right: 0;
+}
+
+.project-overview-fields dt,
+.project-overview-fields dd {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.project-overview-fields dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.project-overview-fields dd {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.project-overview-intro {
+  grid-column: 1 / -1;
+  border-right: 0;
+  border-top: 1px solid var(--line);
+}
+
+.project-overview-empty {
+  color: var(--muted);
+}
+
 .template-actions {
   display: flex;
   flex-wrap: wrap;
@@ -515,5 +584,18 @@ td a {
 
   .success-details div {
     grid-template-columns: 1fr;
+  }
+
+  .project-overview-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .project-overview-fields div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .project-overview-fields div:last-child {
+    border-bottom: 0;
   }
 }

@@ -1,5 +1,6 @@
 const projectSelect = document.querySelector('#projectSelect');
 const roleSelect = document.querySelector('#roleSelect');
+const projectOverviewList = document.querySelector('#projectOverviewList');
 const projectIntro = document.querySelector('#projectIntro');
 const projectCountdown = document.querySelector('#projectCountdown');
 const form = document.querySelector('#entryForm');
@@ -127,6 +128,46 @@ function formatProjectDate(project) {
   return '开始日期：未设置\n结束日期：未设置';
 }
 
+function formatProjectDateInline(project) {
+  const start = project?.start_date ? project.start_date.slice(0, 10) : '';
+  const end = project?.end_date ? project.end_date.slice(0, 10) : '';
+  if (start && end) return `${start} 至 ${end}`;
+  if (start) return start;
+  if (end) return end;
+  return '未设置';
+}
+
+function renderProjectOverview() {
+  const availableProjects = selectableProjects();
+  if (!availableProjects.length) {
+    projectOverviewList.innerHTML = '<div class="project-overview-empty">当前没有可报名项目</div>';
+    return;
+  }
+
+  projectOverviewList.innerHTML = availableProjects.map((project) => `
+    <article class="project-overview-item">
+      <dl class="project-overview-fields">
+        <div>
+          <dt>项目名称</dt>
+          <dd>${escapeHtml(project.name || '未设置')}</dd>
+        </div>
+        <div>
+          <dt>项目日期</dt>
+          <dd>${escapeHtml(formatProjectDateInline(project))}</dd>
+        </div>
+        <div>
+          <dt>报名截止日期时间</dt>
+          <dd>${escapeHtml(formatDeadline(project.registration_deadline_at))}</dd>
+        </div>
+        <div class="project-overview-intro">
+          <dt>项目介绍</dt>
+          <dd>${escapeHtml(project.intro || '暂无项目介绍')}</dd>
+        </div>
+      </dl>
+    </article>
+  `).join('');
+}
+
 function renderProjectIntro(project) {
   if (!project) {
     projectIntro.textContent = '请选择报名项目';
@@ -251,6 +292,7 @@ function showSuccessDialog(data, formData) {
 
 function renderProjects(preferredProjectId = '', options = {}) {
   const availableProjects = selectableProjects();
+  renderProjectOverview();
   projectSelect.innerHTML = availableProjects.map((project) => (
     `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`
   )).join('');
@@ -377,6 +419,7 @@ async function loadOptions(options = {}) {
     roleSelect.disabled = true;
     submitBtn.disabled = true;
     projectIntro.textContent = '当前项目表 model_card_projects 为空，请先登录后台新增项目和职别。';
+    renderProjectOverview();
     projectCountdown.textContent = '当前没有可报名项目';
     projectCountdown.classList.add('error');
     if (!options.silent) setStatus('当前没有可报名项目，请先在后台项目维护中新增项目。', true);
