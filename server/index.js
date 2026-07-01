@@ -2483,10 +2483,27 @@ app.use((error, _req, res, _next) => {
 });
 
 const port = Number(process.env.PORT || 3051);
-await initDb();
-await ensureDefaultAdmin();
-await backfillProjectCreators();
-await restoreQueuedSubmissionJobs();
-app.listen(port, () => {
-  console.log(`model-card portal listening on port ${port}`);
-});
+
+async function startServer() {
+  try {
+    await initDb();
+    await ensureDefaultAdmin();
+    await backfillProjectCreators();
+    await restoreQueuedSubmissionJobs();
+
+    const server = app.listen(port, () => {
+      console.log(`model-card portal listening on port ${port}`);
+    });
+
+    server.on('error', (error) => {
+      console.error('Failed to start model-card portal HTTP server:', error);
+      process.exit(1);
+    });
+  } catch (error) {
+    console.error('Failed to start model-card portal:', error);
+    await pool.end().catch(() => {});
+    process.exit(1);
+  }
+}
+
+await startServer();
